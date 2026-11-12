@@ -2,6 +2,17 @@
 
 ## Stand (2026-11-12): Runde 2 nach erstem Spieltest (Git: github.com/MP-E3N/The-Town)
 
+### Neu in Runde 3 (zweiter Spieltest: „macht auf jeden Fall schon Laune“)
+- **Fehlerlog:** Browser-Fehler landen automatisch in `Lehnsherr/fehler.log` (POST /fehlerlog an `serve.ps1`, das
+  jetzt auch `Cache-Control: no-store` sendet). Vor jeder Runde lesen.
+- **Straßen:** neue Optik (Pflaster/Kies/Erde, Feldwege mit Grasnarbe, Wegrand, Radspuren, Brückengeländer),
+  natürliche Kurven, offene Gassenenden werden angeschlossen; Hausgärten. Details: Stadtplaner-Lernbuch Runde 2.
+- **Kamera:** weicher Zoom zum Mauszeiger (auch Touchpad), WASD mit Beschleunigung, H fliegt zur Burg.
+- **Rekrutieren nur auf Befehl:** Burg/Kaserne anklicken → +1/+5 Speerträger/Bogenschützen (Warteschlange);
+  „Automatisch auffüllen“ je Gebäude, Standard aus. Preis und Unterhalt im Infofenster und rechts unter „Militär“.
+- **Tooltips:** Ressourcen, Lager-Inhalt, Knöpfe zeigen beim Überfahren sofort Name und Zweck.
+- **Höfe wohnen mit:** Bauernhof 4, Viehhof 3 Wohnplätze.
+
 ### Neu in Runde 2 (Nutzerwünsche nach dem ersten Spieltest)
 - **Performance:** Bäume + Gras in vorgezeichneten Chunks (`render/deko.js`), Gelände-Chunks im Leerlauf vorberechnet,
   schnellerer Pixel-Renderer, DPR max. 1,5, weniger Rauch. 1920×1080: Zoom 14 von 62 → 5 ms, Zoom 20 von 39 → 4 ms.

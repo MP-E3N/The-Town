@@ -11,13 +11,13 @@
  *   {typ:'mauer', art:'palisade'|'mauer', ax, ay, bx, by}
  *   {typ:'abreissen', id}
  *   {typ:'steuer', stufe:0..2}
- *   {typ:'anwerben', an:bool}
  *   {typ:'sammeln', x, y} | {typ:'sammeln'}       Sammelpunkt der Garnison (ohne x = aufheben)
  *   {typ:'weiter'}                                nach dem Sieg weiterspielen
  *   {typ:'einheiten', ids:[…], aktion:'gehe'|'angriff'|'frei', x, y, ziel}   Soldaten führen (wie im RTS)
  *   {typ:'transfer', von, nach, ware, menge}      Waren zwischen zwei eigenen Lagern umlagern
  *   {typ:'produktion', id, produkt}               Waffenschmiede: 'speere' | 'boegen'
- *   {typ:'ausbildung', id, art}                   Burg/Kaserne: 'speer' | 'bogen' | 'aus'
+ *   {typ:'ausbildung', id, art}                   Burg/Kaserne automatisch auffüllen: 'speer' | 'bogen' | 'aus'
+ *   {typ:'rekrutieren', id, art, anzahl}          Rekruten in Auftrag geben (anzahl 0 = Warteschlange leeren)
  */
 
 import { KARTE_B, KARTE_H, LAND_RADIUS } from '../data/werte.js';
@@ -177,11 +177,20 @@ export function befehlAnwenden(z, b) {
       const g = z.gebaeude[ganz(b.id, 0, z.gebaeude.length - 1)];
       if (!g || g.besitzer !== herr || !GEBAEUDE[g.art].plaetze) return;
       if (b.art !== 'aus' && !AUSBILDUNG[b.art]) return;
-      g.ausbildung = b.art;
+      g.auto = b.art;
+      break;
+    }
+    case 'rekrutieren': {
+      const g = z.gebaeude[ganz(b.id, 0, z.gebaeude.length - 1)];
+      if (!g || g.besitzer !== herr || g.zustand !== 'fertig' || !GEBAEUDE[g.art].plaetze) return;
+      const n = ganz(b.anzahl, 0, 20);
+      if (!g.warteschlange) g.warteschlange = [];
+      if (n === 0) { g.warteschlange.length = 0; return; }
+      if (!AUSBILDUNG[b.art]) return;
+      for (let i = 0; i < n && g.warteschlange.length < 20; i++) g.warteschlange.push(b.art);
       break;
     }
     case 'weiter': if (z.ergebnis && z.ergebnis.sieg) { z.ergebnis = null; z.siegGemeldet = true; } break;
-    case 'anwerben': h.anwerben = !!b.an; break;
     case 'sammeln':
       h.sammelpunkt = (b.x === undefined || b.x === null) ? null : { x: ganz(b.x, 0, KARTE_B * 1000), y: ganz(b.y, 0, KARTE_H * 1000) };
       break;

@@ -50,6 +50,8 @@ export function klugerBot() {
     const tag = Math.floor(z.tick / 600);
     const h = z.herren[0], burg = z.gebaeude[h.burg], markt = z.gebaeude[h.markt];
     const k = karteFuer(z.seed);
+    // Der Bot lässt Burg und Kasernen automatisch auffüllen.
+    if (z.tick % 300 === 1) for (const g of z.gebaeude) if (g.besitzer === 0 && g.zustand === 'fertig' && GEBAEUDE[g.art].plaetze && g.auto !== 'speer') senden({ typ: 'ausbildung', id: g.id, art: 'speer' });
     // Je Tick ein Zonen-Befehl, damit jede Suche die vorige Zone schon sieht.
     if (plan.schritt === 0) {
       const z0 = plan.zonen = plan.zonen || 0;

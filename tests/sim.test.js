@@ -12,6 +12,7 @@ import { abspielen } from '../netz/lokal.js';
 import { stadtStatus } from '../sim/baumeister.js';
 import { befehlAnwenden } from '../sim/befehle.js';
 import { klugerBot, nichtsBot } from './bots.js';
+import { summieren } from '../sim/lager.js';
 
 let fehler = 0;
 function pruefe(name, ok, info = '') {
@@ -91,7 +92,15 @@ function lauf(seed, bot, tage) {
   befehlAnwenden(z, { typ: 'einheiten', ids, aktion: 'frei', spieler: 0 });
   pruefe('Soldaten wieder auf eigene Faust', z.einheiten.filter((u) => ids.includes(u.id)).every((u) => !u.befehl));
   befehlAnwenden(z, { typ: 'ausbildung', id: burg.id, art: 'bogen', spieler: 0 });
-  pruefe('Burg bildet Bogenschützen aus', burg.ausbildung === 'bogen');
+  pruefe('Burg füllt automatisch mit Bogenschützen auf', burg.auto === 'bogen');
+  const vorherS = z.einheiten.filter((u) => u.art === 'soldat').length;
+  befehlAnwenden(z, { typ: 'ausbildung', id: burg.id, art: 'aus', spieler: 0 });
+  for (let i = 0; i < 1200; i++) tick(z, []);
+  pruefe('Ohne Auftrag wird niemand rekrutiert', z.einheiten.filter((u) => u.art === 'soldat').length <= vorherS);
+  burg.inhalt.speere += 2; burg.inhalt.gold += 50; summieren(z, 0);
+  befehlAnwenden(z, { typ: 'rekrutieren', id: burg.id, art: 'speer', anzahl: 1, spieler: 0 });
+  for (let i = 0; i < 400; i++) tick(z, []);
+  pruefe('Rekrut auf Befehl', z.einheiten.filter((u) => u.art === 'soldat').length >= Math.min(5, vorherS + 1), `vorher ${vorherS}`);
 }
 
 // 4) Überfall: Garnison wehrt eine kleine Bande ab

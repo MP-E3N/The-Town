@@ -7,13 +7,17 @@
  */
 
 import { GEBAEUDE, ZONEN, WARENNAME, WAREN, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
-import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME } from '../data/werte.js';
+import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME, MILITAER } from '../data/werte.js';
 import { stadtStatus } from '../sim/baumeister.js';
 import { tageBisErnte } from '../sim/wirtschaft.js';
 import { datum } from '../sim/lib.js';
 
 const $ = (id) => document.getElementById(id);
 const SYMBOL = { nahrung: '🌾', holz: '🪵', stein: '🪨', eisen: '⛓️', speere: '🔱', boegen: '🏹', gold: '🪙' };
+const WAREN_TEXT = {
+  nahrung: '1 pro Kopf und Tag, auch für Soldaten', holz: 'Bauen und Brennholz im Herbst/Winter', stein: 'Kaserne, Turm, Mauern',
+  eisen: 'aus der Erzgrube, für Speere', speere: 'Waffe für Speerträger', boegen: 'Waffe für Bogenschützen', gold: 'Steuern; Rekruten und Sold',
+};
 const ZONEN_TEXT = [
   'Hebt die Ausschreibung auf (Gebautes bleibt stehen).',
   'Häuser für Zuzügler; am Wasser auch Fischerhütten.',
@@ -23,7 +27,7 @@ const ZONEN_TEXT = [
   'Steinbruch auf Fels (grau), Erzgrube auf Erz (rostrot).',
 ];
 const AUFTRAG_TEXT = {
-  kaserne: 'Wirbt Soldaten an (10 Plätze). Je Rekrut: 1 Waffe, 8 Gold, 1 Bewohner ohne Arbeit.',
+  kaserne: 'Bildet Soldaten aus (10 Plätze). Rekrut: 1 Speer oder Bogen + 8 Gold + 1 Bewohner. Unterhalt je Soldat: 1 Nahrung + ⅓ Gold pro Tag. Rekrutieren: fertige Kaserne anklicken.',
   turm: 'Schießt auf Räuber, schützt Häuser in der Nähe (Sicherheit).',
   schmiede: 'Macht Waffen aus Holz + Eisen. Eisen kommt aus der Erzgrube (Bergbau auf Erz).',
   speicher: 'Zusätzliches Lager: kürzere Wege für die Träger.',
@@ -47,7 +51,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     const b = document.createElement('button');
     b.dataset.zone = String(i);
     b.innerHTML = `<span class="farbe" style="background:rgb(${f.join(',')})"></span>${ZONEN[i].name}`;
-    b.title = ZONEN_TEXT[i];
+    b.dataset.tipp = ZONEN_TEXT[i];
     zk.appendChild(b);
   }
   const auf = document.createElement('button');
@@ -66,7 +70,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     b.dataset.art = art;
     const kosten = GEBAEUDE[art] ? kostenText(art) + (GEBAEUDE[art].mauer ? ' /Stück' : '') : '';
     b.innerHTML = `${name}<small>${kosten || '&nbsp;'}</small>`;
-    b.title = AUFTRAG_TEXT[art];
+    b.dataset.tipp = AUFTRAG_TEXT[art];
     ak.appendChild(b);
   }
   ak.addEventListener('click', (e) => {
@@ -89,7 +93,6 @@ export function erzeugePanels(verbindung, ui, aktionen) {
   $('seite-stadt').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.steuer) verbindung().senden({ typ: 'steuer', stufe: Number(b.dataset.steuer) });
-    if (b.dataset.anwerben) verbindung().senden({ typ: 'anwerben', an: b.dataset.anwerben === '1' });
     aktualisiere(true);
   });
   $('info').addEventListener('click', (e) => {
@@ -97,6 +100,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     if (b.dataset.abriss) { verbindung().senden({ typ: 'abreissen', id: Number(b.dataset.abriss) }); ui.auswahl = -1; }
     if (b.dataset.zu) { ui.auswahl = -1; ui.einheiten.clear(); }
     if (b.dataset.frei) verbindung().senden({ typ: 'einheiten', ids: [...ui.einheiten], aktion: 'frei' });
+    if (b.dataset.rekrut) verbindung().senden({ typ: 'rekrutieren', id: ui.auswahl, art: b.dataset.rekrut, anzahl: Number(b.dataset.n) });
     if (b.dataset.produkt) verbindung().senden({ typ: 'produktion', id: ui.auswahl, produkt: b.dataset.produkt });
     if (b.dataset.ausbildung) verbindung().senden({ typ: 'ausbildung', id: ui.auswahl, art: b.dataset.ausbildung });
     if (b.dataset.transfer) {
@@ -146,9 +150,9 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     const verbrauch = st.verbrauch;
     const waren = Object.keys(SYMBOL).map((w) => {
       const knapp = (w === 'nahrung' && h.lager.nahrung < verbrauch * 4) || (w === 'holz' && h.lager.holz < 10);
-      return `<span class="${knapp ? 'knapp' : ''}" title="${WARENNAME[w]}">${SYMBOL[w]} ${h.lager[w]}</span>`;
-    }).join('') + `<span title="Bewohner (ohne Arbeit)">👥 ${h.bewohner} <small class="klein">(${h.arbeitslos} frei)</small></span>`
-      + `<span title="Garnison">🛡️ ${st.soldaten}/${ZIEL.garnison}</span><span title="Zufriedenheit">${h.laune >= 60 ? '🙂' : h.laune >= 35 ? '😐' : '☹️'} ${h.laune}</span>`;
+      return `<span class="${knapp ? 'knapp' : ''}" data-tipp="${WARENNAME[w]} – ${WAREN_TEXT[w]}">${SYMBOL[w]} ${h.lager[w]}</span>`;
+    }).join('') + `<span data-tipp="Bewohner – davon ${h.arbeitslos} ohne Arbeit (Rekruten kommen von hier)">👥 ${h.bewohner} <small class="klein">(${h.arbeitslos} frei)</small></span>`
+      + `<span data-tipp="Garnison – Ziel: ${ZIEL.garnison} Mann. Sold: ${Math.ceil(st.soldaten / MILITAER.soldTeiler)} Gold/Tag">🛡️ ${st.soldaten}/${ZIEL.garnison}</span><span data-tipp="Zufriedenheit – ab 50 ziehen Leute zu, unter 35 ziehen sie weg">${h.laune >= 60 ? '🙂' : h.laune >= 35 ? '😐' : '☹️'} ${h.laune}</span>`;
     $('waren').innerHTML = waren;
     for (const b of $('tempo').querySelectorAll('button')) {
       const t = Number(b.dataset.tempo);
@@ -196,8 +200,12 @@ export function erzeugePanels(verbindung, ui, aktionen) {
       <div class="zeile"><span class="w">Baustellen</span><span>${Object.values(st.anzahlBau).reduce((a, b) => a + b, 0)}</span></div>
       <h3>Steuer</h3>
       <div class="steuer">${STEUER.map((s, i) => `<button data-steuer="${i}" class="${h.steuer === i ? 'an' : ''}" title="Gold/Tag = Bewohner ÷ ${s.teiler}, Laune ${s.laune >= 0 ? '+' : ''}${s.laune}">${s.name}</button>`).join('')}</div>
-      <h3>Anwerben</h3>
-      <div class="steuer"><button data-anwerben="1" class="${h.anwerben ? 'an' : ''}">an</button><button data-anwerben="0" class="${!h.anwerben ? 'an' : ''}">aus</button></div>
+      <h3>Militär</h3>
+      <div class="zeile"><span class="w">Rekrut kostet</span><span>1 🔱/🏹 + ${MILITAER.anwerben.gold} 🪙 + 1 👥</span></div>
+      <div class="zeile"><span class="w">Ausbildung</span><span>${MILITAER.anwerben.ticks / 10} s je Rekrut</span></div>
+      <div class="zeile"><span class="w">Unterhalt je Soldat</span><span>1 🌾/Tag + ⅓ 🪙/Tag</span></div>
+      <div class="zeile"><span class="w">Garnison kostet jetzt</span><span>${st.soldaten} 🌾 + ${Math.ceil(st.soldaten / MILITAER.soldTeiler)} 🪙 pro Tag</span></div>
+      <div class="klein">Rekrutieren: Burg oder Kaserne anklicken.</div>
       <h3>Baumeister</h3>
       <div class="log">${h.planLog.slice().reverse().map((t) => `<div>${t}</div>`).join('') || '<div>…</div>'}</div>`;
     if (sofort || html !== zuletzt) { $('seite-stadt').innerHTML = html; zuletzt = html; }
@@ -208,7 +216,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
   }
 
   function inhaltTabelle(g) {
-    return `<div class="inhalt">${WAREN.map((w) => `<span title="${WARENNAME[w]}">${SYMBOL[w]} ${g.inhalt[w] || 0}</span>`).join('')}</div>`;
+    return `<div class="inhalt">${WAREN.map((w) => `<span data-tipp="${WAREN_TEXT[w]}">${SYMBOL[w]} ${WARENNAME[w]} <b>${g.inhalt[w] || 0}</b></span>`).join('')}</div>`;
   }
 
   /** Kleines Fenster beim Überfahren eines Lagers: was liegt drin? */
@@ -249,7 +257,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
         else {
           if (typ.arbeiter) zeilen.push(`Arbeiter: ${g.belegt} / ${typ.arbeiter}${g.blockiert ? ' · ' + g.blockiert : ''}`);
           if (typ.ware && g.art !== 'schmiede') zeilen.push(`Erzeugt ${WARENNAME[typ.ware]} · am Gebäude: ${g.puffer} · Träger unterwegs: ${g.traeger}`);
-          if (typ.wohnplaetze) zeilen.push(`${g.wohn === 8 ? 'Bürgerhaus' : 'Wohnhaus'} · Wohnplätze: ${g.wohn || typ.wohnplaetze}`);
+          if (typ.wohnplaetze) zeilen.push(g.art === 'haus' ? `${g.wohn === 8 ? 'Bürgerhaus' : 'Wohnhaus'} · Wohnplätze: ${g.wohn || typ.wohnplaetze}` : `Hier wohnt auch die Familie: ${typ.wohnplaetze} Wohnplätze`);
           if (g.art === 'schmiede') {
             const p = g.pufferWaren || {};
             zeilen.push(`Am Gebäude: ${p.speere || 0} Speere, ${p.boegen || 0} Bögen`);
@@ -258,7 +266,11 @@ export function erzeugePanels(verbindung, ui, aktionen) {
           if (typ.plaetze) {
             const n = zz.einheiten.filter((u) => u.art === 'soldat' && u.heim === g.id).length;
             zeilen.push(`Soldaten: ${n} / ${typ.plaetze}${g.anwerbung ? ' · Rekrut in Ausbildung (' + Math.floor(g.anwerbung / 3) + ' %)' : ''}`);
-            extra += `<div class="wahl">Ausbilden: ${Object.entries(AUSBILDUNG).map(([k, v]) => `<button data-ausbildung="${k}" class="${(g.ausbildung || 'speer') === k ? 'an' : ''}" title="braucht ${WARENNAME[v.waffe]}">${v.name}</button>`).join('')}<button data-ausbildung="aus" class="${g.ausbildung === 'aus' ? 'an' : ''}">niemanden</button></div>`;
+            const ws = g.warteschlange || [];
+            const zaehl = (a) => ws.filter((x) => x === a).length;
+            extra += `<div class="rekrut">${Object.entries(AUSBILDUNG).map(([k, v]) => `<div class="rzeile" data-tipp="${v.text}"><span><b>${v.name}</b> <small>1 ${SYMBOL[v.waffe]} + ${MILITAER.anwerben.gold} 🪙 + 1 👥 · Sold ⅓ 🪙 + 1 🌾/Tag</small></span><span><button data-rekrut="${k}" data-n="1">+1</button><button data-rekrut="${k}" data-n="5">+5</button></span></div>`).join('')}
+              <div class="klein">In Auftrag: ${ws.length ? Object.keys(AUSBILDUNG).filter(zaehl).map((a) => zaehl(a) + ' ' + AUSBILDUNG[a].name).join(', ') : 'niemand'} ${ws.length ? '<button data-rekrut="speer" data-n="0">leeren</button>' : ''}</div>
+              <div class="wahl" data-tipp="Wenn an: Plätze werden selbstständig aufgefüllt, solange Waffen, Gold, freie Leute und Vorrat reichen.">Automatisch auffüllen: ${['aus', 'speer', 'bogen'].map((k) => `<button data-ausbildung="${k}" class="${(g.auto || 'aus') === k ? 'an' : ''}">${k === 'aus' ? 'aus' : AUSBILDUNG[k].name}</button>`).join('')}</div></div>`;
           }
           if (g.art === 'hof') {
             const ph = { brach: 'brach', wachsend: 'wächst', reif: 'reif' };

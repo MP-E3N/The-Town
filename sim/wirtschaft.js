@@ -227,6 +227,11 @@ function baustellen(z) {
   }
 }
 
+/**
+ * Rekrutieren: Der Herr gibt Rekruten in Auftrag (Warteschlange je Burg/Kaserne).
+ * Automatisch aufgefüllt wird nur, wenn er es für das Gebäude anordnet (g.auto = 'speer' | 'bogen').
+ * WARUM: Soldaten kosten Waffe, Gold und einen Bewohner — das soll eine bewusste Entscheidung sein.
+ */
 function anwerben(z) {
   for (const g of z.gebaeude) {
     if (g.zustand !== 'fertig') continue;
@@ -237,29 +242,40 @@ function anwerben(z) {
       g.anwerbung++;
       if (g.anwerbung >= MILITAER.anwerben.ticks) {
         g.anwerbung = 0;
-        neuerSoldat(z, g.besitzer, g, g.anwerbungTyp || 'speer');
+        const u = neuerSoldat(z, g.besitzer, g, g.anwerbungTyp || 'speer');
         const n = soldatenVon(z, g.besitzer);
-        meldung(z, g.besitzer, `Ein Rekrut tritt in ${typ.name} an (Garnison ${n}).`, 'gut', 'rekrut', 200);
+        meldung(z, g.besitzer, `${AUSBILDUNG[u.typ].einer} tritt in ${typ.name} an (Garnison ${n}).`, 'gut', 'rekrut', 200);
       }
       continue;
     }
-    if (!h.anwerben || g.ausbildung === 'aus') continue;
-    const aus = AUSBILDUNG[g.ausbildung || 'speer'];
+    const schlange = g.warteschlange || (g.warteschlange = []);
+    const manuell = schlange.length > 0;
+    const art = manuell ? schlange[0] : (g.auto && g.auto !== 'aus' ? g.auto : null);
+    if (!art) continue;
     let drin = 0;
     for (const u of z.einheiten) if (u.art === 'soldat' && u.heim === g.id) drin++;
-    if (drin >= typ.plaetze) continue;
-    const a = MILITAER.anwerben;
-    const satt = vorratReicht(z, g.besitzer, stadtStatus(z, g.besitzer), 1);
-    if (!satt) {
-      meldung(z, g.besitzer, 'Anwerben pausiert: Der Vorrat reicht nicht bis zur nächsten Ernte.', 'warn', 'rekrutNahrung', 4000);
-    } else if (h.lager[aus.waffe] >= 1 && h.lager.gold >= a.gold && h.arbeitslos >= 1 && h.bewohner > NIEDERLAGE_BEWOHNER + 2) {
+    if (drin >= typ.plaetze) {
+      if (manuell) meldung(z, g.besitzer, `${typ.name} ist voll (${typ.plaetze} Plätze) – Rekruten warten.`, 'warn', 'voll' + g.id, 3000);
+      continue;
+    }
+    const aus = AUSBILDUNG[art], a = MILITAER.anwerben;
+    // Automatik achtet auf Vorrat und freie Hände; ein Auftrag des Herrn nimmt notfalls einen Arbeiter.
+    if (!manuell && !vorratReicht(z, g.besitzer, stadtStatus(z, g.besitzer), 1)) {
+      meldung(z, g.besitzer, 'Automatisches Anwerben pausiert: Der Vorrat reicht nicht bis zur nächsten Ernte.', 'warn', 'rekrutNahrung', 4000);
+      continue;
+    }
+    const leute = manuell ? h.bewohner > NIEDERLAGE_BEWOHNER + 2 : h.arbeitslos >= 1 && h.bewohner > NIEDERLAGE_BEWOHNER + 2;
+    if (h.lager[aus.waffe] >= 1 && h.lager.gold >= a.gold && leute) {
       nehmen(z, g.besitzer, aus.waffe, 1, g.x, g.y); nehmen(z, g.besitzer, 'gold', a.gold, g.x, g.y);
-      h.bewohner--; h.arbeitslos--;
-      g.anwerbung = 1; g.anwerbungTyp = g.ausbildung || 'speer';
+      h.bewohner--; if (h.arbeitslos > 0) h.arbeitslos--;
+      g.anwerbung = 1; g.anwerbungTyp = art;
+      if (manuell) schlange.shift();
     } else if (h.lager[aus.waffe] < 1) {
-      meldung(z, g.besitzer, aus.waffe === 'speere' ? 'Anwerben stockt: keine Speere (Waffenschmiede braucht Holz + Eisen).' : 'Anwerben stockt: keine Bögen (Waffenschmiede auf Bögen stellen).', 'warn', 'waffen' + aus.waffe, 4000);
-    } else if (h.arbeitslos < 1) {
-      meldung(z, g.besitzer, 'Anwerben stockt: niemand ohne Arbeit – es braucht mehr Bewohner.', 'warn', 'rekrutLeute', 4000);
+      meldung(z, g.besitzer, aus.waffe === 'speere' ? 'Rekrutieren stockt: keine Speere (Waffenschmiede braucht Holz + Eisen).' : 'Rekrutieren stockt: keine Bögen (Waffenschmiede auf Bögen stellen).', 'warn', 'waffen' + aus.waffe, 4000);
+    } else if (h.lager.gold < a.gold) {
+      meldung(z, g.besitzer, `Rekrutieren stockt: Ein Rekrut kostet ${a.gold} Gold.`, 'warn', 'rekrutGold', 4000);
+    } else {
+      meldung(z, g.besitzer, 'Rekrutieren stockt: zu wenige Bewohner.', 'warn', 'rekrutLeute', 4000);
     }
   }
 }

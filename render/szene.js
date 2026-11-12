@@ -17,7 +17,7 @@ import { wegGecached } from '../sim/pfad.js';
 import { tuer, tuerKachel } from '../sim/baumeister.js';
 import { hash32, datum } from '../sim/lib.js';
 import { erzeugeGelaende, zeichneGelaende, vorrendern } from './gelaende.js';
-import { gebaeudeSprite, baeume, figurSprites, figurSchatten, tierSprite } from './sprites.js';
+import { gebaeudeSprite, baeume, figurSprites, figurSchatten, tierSprite, strassenBelag } from './sprites.js';
 import { sicht } from './kamera.js';
 import { kampfwerte } from '../sim/militaer.js';
 import { erzeugeDeko, zeichneDeko } from './deko.js';
@@ -67,41 +67,148 @@ function zonenBild(sz, z) {
   c.putImageData(img, 0, 0);
 }
 
-/** Straßen als Path2D in Kachel-Einheiten, Brückenstücke über Wasser. */
+/**
+ * Straßen für die Darstellung aufbereiten (nur Optik, die Simulation rechnet mit den geraden Strecken):
+ * gleichmäßig abtasten, ganz leicht natürlich schwingen lassen (Fuhrwerke fahren nie mit dem Lineal),
+ * als Catmull-Rom-Kurve zeichnen, in Abschnitte Pflaster (Stadtkern) / Erde teilen, Fahrspuren, Brücken.
+ */
+function catmull(pts) {
+  const p = new Path2D();
+  if (!pts.length) return p;
+  p.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    p.bezierCurveTo(p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6, p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6, p2[0], p2[1]);
+  }
+  return p;
+}
+
 function strassenCache(sz, z) {
   if (sz.strassen.version === z.version) return sz.strassen.liste;
   const k = sz.k;
+  const markt = z.gebaeude[z.herren[0].markt];
+  const mx = markt ? markt.x / 1000 : -999, my = markt ? markt.y / 1000 : -999;
   const liste = [];
   for (const s of z.strassen) {
-    const p = s.punkte, n = p.length / 2;
-    const pfad = new Path2D();
-    const pt = (i) => [p[i * 2] / 1000, p[i * 2 + 1] / 1000];
-    let [x0, y0] = pt(0);
-    pfad.moveTo(x0, y0);
-    for (let i = 1; i < n - 1; i++) {
-      const [x1, y1] = pt(i), [x2, y2] = pt(i + 1);
-      pfad.quadraticCurveTo(x1, y1, (x1 + x2) / 2, (y1 + y2) / 2);
-    }
-    const [xe, ye] = pt(n - 1);
-    pfad.lineTo(xe, ye);
-    // Brücken: Abtasten entlang der Punkte
-    const bruecken = [];
-    let lauf = null;
+    const p = s.punkte, n = p.length / 2, breite = s.breite / 1000;
+    // 1) gleichmäßig abtasten (alle 0,5 Kacheln)
+    const roh = [];
     for (let i = 0; i < n - 1; i++) {
-      const [ax, ay] = pt(i), [bx, by] = pt(i + 1);
-      const l = Math.hypot(bx - ax, by - ay), st = Math.max(1, Math.ceil(l / 0.2));
-      for (let s2 = 0; s2 < st; s2++) {
-        const x = ax + (bx - ax) * s2 / st, y = ay + (by - ay) * s2 / st;
-        const w = k.wasser[Math.floor(y) * KARTE_B + Math.floor(x)];
-        if (w) { if (!lauf) { lauf = [[x - (bx - ax) / l * 0.6, y - (by - ay) / l * 0.6]]; } lauf.push([x, y]); }
-        else if (lauf) { lauf.push([x + (bx - ax) / l * 0.6, y + (by - ay) / l * 0.6]); bruecken.push(lauf); lauf = null; }
+      const ax = p[i * 2] / 1000, ay = p[i * 2 + 1] / 1000, bx = p[i * 2 + 2] / 1000, by = p[i * 2 + 3] / 1000;
+      const l = Math.hypot(bx - ax, by - ay), st = Math.max(1, Math.round(l / 0.5));
+      for (let j = 0; j < st; j++) roh.push([ax + (bx - ax) * j / st, ay + (by - ay) * j / st]);
+    }
+    roh.push([p[p.length - 2] / 1000, p[p.length - 1] / 1000]);
+    // 2) leichte Schwingung quer zur Richtung, an den Enden und über Wasser null (Anschlüsse bleiben exakt)
+    const gesamt = roh.length * 0.5, ph = (s.id * 2.399) % 6.28;
+    const pts = [], rand = [], normalen = [];
+    for (let i = 0; i < roh.length; i++) {
+      const a = roh[Math.max(0, i - 1)], b = roh[Math.min(roh.length - 1, i + 1)];
+      let nx = -(b[1] - a[1]), ny = b[0] - a[0];
+      const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
+      const sPos = i * 0.5, fade = Math.max(0, Math.min(1, sPos / 2, (gesamt - sPos) / 2));
+      const nass = k.wasser[Math.floor(roh[i][1]) * KARTE_B + Math.floor(roh[i][0])] ? 0 : 1;
+      const amp = breite * 0.14 * fade * nass;
+      const w = amp * (Math.sin(sPos * 0.55 + ph) * 0.65 + Math.sin(sPos * 0.21 + ph * 1.7) * 0.35);
+      pts.push([roh[i][0] + nx * w, roh[i][1] + ny * w]);
+      const wr = amp * 1.6 * Math.sin(sPos * 0.9 + ph * 2.3);
+      rand.push([roh[i][0] + nx * (w + wr), roh[i][1] + ny * (w + wr)]);
+      normalen.push([nx, ny]);
+    }
+    const pfad = catmull(pts), pfadRand = catmull(rand);
+    // 3) Abschnitte: Pflaster im Stadtkern (Haupt- und Gassen), sonst Erde/Kies
+    const abschnitte = [];
+    let akt = null;
+    for (let i = 0; i < pts.length; i++) {
+      const kern = Math.hypot(pts[i][0] - mx, pts[i][1] - my) < 10 && s.art !== 'weg';
+      const art = kern ? 'pflaster' : s.art === 'haupt' ? 'kies' : 'erde';
+      if (!akt || akt.art !== art) { if (akt) akt.pts.push(pts[i]); akt = { art, pts: [] }; abschnitte.push(akt); }
+      akt.pts.push(pts[i]);
+    }
+    for (const a of abschnitte) a.pfad = catmull(a.pts);
+    // 4) Fahrspuren (versetzte Linien) außerhalb des Pflasters
+    const spuren = new Path2D();
+    const versatz = breite * (s.art === 'weg' ? 0.26 : 0.2);
+    for (const sd of [-1, 1]) {
+      let auf = false;
+      for (let i = 0; i < pts.length; i++) {
+        const kern = Math.hypot(pts[i][0] - mx, pts[i][1] - my) < 10 && s.art !== 'weg';
+        const x = pts[i][0] + normalen[i][0] * versatz * sd, y = pts[i][1] + normalen[i][1] * versatz * sd;
+        if (kern) { auf = false; continue; }
+        if (!auf) { spuren.moveTo(x, y); auf = true; } else spuren.lineTo(x, y);
       }
     }
+    // 5) Brücken über Wasser
+    const bruecken = [];
+    let lauf = null;
+    for (let i = 0; i < pts.length; i++) {
+      const [x, y] = pts[i];
+      const w = k.wasser[Math.floor(y) * KARTE_B + Math.floor(x)];
+      if (w) { if (!lauf) lauf = [pts[Math.max(0, i - 1)]]; lauf.push([x, y]); }
+      else if (lauf) { lauf.push([x, y]); bruecken.push(lauf); lauf = null; }
+    }
     if (lauf) bruecken.push(lauf);
-    liste.push({ s, pfad, bruecken, breite: s.breite / 1000 });
+    liste.push({ s, pfad, pfadRand, abschnitte, spuren, bruecken, breite, punkte: pts, normalen });
   }
   sz.strassen = { version: z.version, liste };
   return liste;
+}
+
+function belagMuster(sz, ctx, art) {
+  if (!sz.muster) sz.muster = {};
+  if (!sz.muster[art]) {
+    const m = ctx.createPattern(strassenBelag(art), 'repeat');
+    m.setTransform(new DOMMatrix([1 / 64, 0, 0, 1 / 64, 0, 0])); // 64 Pixel Belag = 1 Kachel
+    sz.muster[art] = m;
+  }
+  return sz.muster[art];
+}
+
+/** Zeichnet alle Straßen in Lagen (Rand, Kante, Belag, Spuren), damit Kreuzungen sauber verschmelzen. */
+function zeichneStrassen(sz, ctx, z, zoom) {
+  const str = strassenCache(sz, z);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (zoom < 14) {
+    for (const r of str) { ctx.strokeStyle = 'rgba(92,72,48,0.75)'; ctx.lineWidth = r.breite + 0.16; ctx.stroke(r.pfad); }
+    for (const r of str) { ctx.strokeStyle = r.s.art === 'haupt' ? '#a8916a' : '#9e8862'; ctx.lineWidth = r.breite; ctx.stroke(r.pfad); }
+  } else {
+    // ausgetretener Wegrand (unregelmäßig) und dunklere Kante
+    for (const r of str) { ctx.strokeStyle = 'rgba(110,96,56,0.28)'; ctx.lineWidth = r.breite + 0.5; ctx.stroke(r.pfadRand); }
+    for (const r of str) { ctx.strokeStyle = 'rgba(74,60,40,0.55)'; ctx.lineWidth = r.breite + 0.12; ctx.stroke(r.pfad); }
+    for (const r of str) for (const a of r.abschnitte) {
+      ctx.strokeStyle = belagMuster(sz, ctx, a.art); ctx.lineWidth = r.breite; ctx.stroke(a.pfad);
+    }
+    for (const r of str) {
+      if (r.s.art === 'weg') { ctx.strokeStyle = 'rgba(104,134,64,0.85)'; ctx.lineWidth = r.breite * 0.3; ctx.stroke(r.pfad); }
+      // Fahrspuren: unterbrochen und blass, sonst wirken sie wie Schienen
+      ctx.strokeStyle = r.s.art === 'weg' ? 'rgba(84,66,44,0.35)' : 'rgba(84,66,44,0.22)'; ctx.lineWidth = r.s.art === 'weg' ? 0.1 : 0.08;
+      ctx.setLineDash([0.9, 0.3, 0.5, 0.4]); ctx.stroke(r.spuren); ctx.setLineDash([]);
+      for (const a of r.abschnitte) if (a.art === 'pflaster') { ctx.strokeStyle = 'rgba(60,52,44,0.35)'; ctx.lineWidth = 0.05; ctx.stroke(a.pfad); }
+    }
+  }
+  // Brücken: Bohlen, Geländer mit Pfosten
+  for (const r of str) for (const b of r.bruecken) {
+    const pf = new Path2D(); pf.moveTo(b[0][0], b[0][1]); for (const q of b) pf.lineTo(q[0], q[1]);
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = r.breite + 0.5; ctx.save(); ctx.translate(0.12, 0.16); ctx.stroke(pf); ctx.restore();
+    ctx.strokeStyle = '#3e2c1c'; ctx.lineWidth = r.breite + 0.42; ctx.stroke(pf);
+    ctx.strokeStyle = '#8a6440'; ctx.lineWidth = r.breite + 0.26; ctx.setLineDash([0.13, 0.035]); ctx.stroke(pf); ctx.setLineDash([]);
+    if (zoom >= 20) {
+      ctx.strokeStyle = '#5a3e22'; ctx.lineWidth = 0.07;
+      for (const sd of [-1, 1]) {
+        ctx.beginPath();
+        for (let i = 0; i < b.length; i++) {
+          const a = b[Math.max(0, i - 1)], c = b[Math.min(b.length - 1, i + 1)];
+          let nx = -(c[1] - a[1]), ny = c[0] - a[0]; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
+          const o = (r.breite / 2 + 0.17) * sd;
+          if (i) ctx.lineTo(b[i][0] + nx * o, b[i][1] + ny * o); else ctx.moveTo(b[i][0] + nx * o, b[i][1] + ny * o);
+          if (i % 2 === 0) { ctx.fillStyle = '#4a321c'; ctx.fillRect(b[i][0] + nx * o - 0.06, b[i][1] + ny * o - 0.06, 0.12, 0.12); }
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.lineCap = 'round';
+  }
 }
 
 function wegPunkte(sz, z, von, nach) {
@@ -340,22 +447,8 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
     ctx.restore();
   }
 
-  // Straßen
-  const str = strassenCache(sz, z);
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (const r of str) { ctx.strokeStyle = 'rgba(92,72,48,0.75)'; ctx.lineWidth = r.breite + 0.16; ctx.stroke(r.pfad); }
-  for (const r of str) { ctx.strokeStyle = r.s.art === 'haupt' ? '#a8916a' : '#9e8862'; ctx.lineWidth = r.breite; ctx.stroke(r.pfad); }
-  if (zoom > 16) for (const r of str) {
-    ctx.strokeStyle = 'rgba(190,172,130,0.45)'; ctx.lineWidth = r.breite * 0.35; ctx.stroke(r.pfad);
-    if (zoom > 34) { ctx.strokeStyle = 'rgba(100,80,56,0.35)'; ctx.lineWidth = 0.04; ctx.setLineDash([0.3, 0.2]); ctx.stroke(r.pfad); ctx.setLineDash([]); }
-  }
-  for (const r of str) for (const b of r.bruecken) {
-    ctx.beginPath(); ctx.moveTo(b[0][0], b[0][1]); for (const p of b) ctx.lineTo(p[0], p[1]);
-    ctx.lineCap = 'butt';
-    ctx.strokeStyle = '#3e2c1c'; ctx.lineWidth = r.breite + 0.42; ctx.stroke();
-    ctx.strokeStyle = '#8a6440'; ctx.lineWidth = r.breite + 0.25; ctx.setLineDash([0.13, 0.035]); ctx.stroke(); ctx.setLineDash([]);
-    ctx.lineCap = 'round';
-  }
+  // Straßen (Belag, Ränder, Spuren, Brücken)
+  zeichneStrassen(sz, ctx, z, zoom);
 
   if (saison === 3) {
     welt();
@@ -381,6 +474,9 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
 
   // Brennende Gebäude bestimmen (Räuber plündern)
   for (const u of z.einheiten) if (u.art === 'raeuber' && u.zustand === 'pluendern' && u.ziel >= 0) sz.brennt.set(u.ziel, sz.zeit + 4);
+
+  // Hausgärten hinter den Wohnhäusern (nur Optik, nur wo Platz ist)
+  if (zoom >= 16) zeichneGaerten(ctx, z, c, k, v, saison);
 
   // Gebäude: Schatten, dann Bilder
   const winter = saison === 3;
@@ -684,6 +780,32 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
   } else sz.schnee.length = 0;
 
   sz.stat = { ms: Math.round((performance.now() - t0) * 10) / 10, baeume: sz.dekoBaeume, partikel: sz.partikel.length, passanten: sz.passanten.length, gebaeude: gl.length };
+}
+
+/** Gemüsegärten mit Zaun hinter Häusern: macht Wohngassen lebendig. */
+function zeichneGaerten(ctx, z, c, k, v, saison) {
+  for (const g of z.gebaeude) {
+    if (g.art !== 'haus' || g.zustand !== 'fertig') continue;
+    const gx = g.x / 1000, gy = g.y / 1000;
+    if (!sichtbar(v, gx, gy, 3)) continue;
+    const cw = Math.cos(g.w * RAD), sw = Math.sin(g.w * RAD);
+    const tiefe = g.wohn === 8 ? 0.7 : 1.0, lv = g.t / 2000 + 0.08 + tiefe / 2;
+    const mx = gx - sw * lv, my = gy + cw * lv;
+    const t = Math.floor(my) * KARTE_B + Math.floor(mx);
+    if (k.wasser[t] || c.strasse[t] || (c.belegt[t] && c.belegt[t] - 1 !== g.id) || c.feld[t]) continue;
+    ctx.save(); ctx.translate(mx, my); ctx.rotate(g.w * RAD);
+    const b = g.b / 1000 * 0.92;
+    ctx.fillStyle = saison === 3 ? 'rgba(120,108,90,0.6)' : 'rgba(112,86,56,0.75)'; ctx.fillRect(-b / 2, -tiefe / 2, b, tiefe);
+    if (saison !== 3) {
+      ctx.strokeStyle = saison === 2 ? 'rgba(170,140,60,0.9)' : 'rgba(84,140,60,0.9)'; ctx.lineWidth = 0.07; ctx.setLineDash([0.06, 0.05]);
+      ctx.beginPath();
+      for (let x = -b / 2 + 0.12; x < b / 2 - 0.05; x += 0.16) { ctx.moveTo(x, -tiefe / 2 + 0.1); ctx.lineTo(x, tiefe / 2 - 0.1); }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.strokeStyle = 'rgba(90,64,36,0.9)'; ctx.lineWidth = 0.035; ctx.setLineDash([0.12, 0.05]);
+    ctx.strokeRect(-b / 2, -tiefe / 2, b, tiefe); ctx.setLineDash([]);
+    ctx.restore();
+  }
 }
 
 /** Nur Optik: Händler stehen an den Ständen, Käufer schlendern auf dem Platz (mehr Bewohner = mehr Trubel). */

@@ -46,7 +46,7 @@ console.log(s);
 console.log('Legende: = Straße  B Brücke  H Bürgerhaus  h Wohnhaus  # Burg  P Platz  R Rathaus  K Kirche/Kaserne  f Feld  w freies Wohnland  ^ steil  T Wald  ~ Wasser\n');
 
 // Kennzahlen
-let laenge = 0, knicke = 0, sackgassen = 0;
+let laenge = 0, knicke = 0, sackgassen = 0, sackWohn = 0;
 const enden = [];
 for (const st of z.strassen) {
   const p = st.punkte;
@@ -56,21 +56,26 @@ for (const st of z.strassen) {
     let d = Math.abs(a2 - a1); if (d > Math.PI) d = 2 * Math.PI - d;
     if (d > 0.35) knicke++;
   }
-  enden.push([p[p.length - 2], p[p.length - 1], st.art]);
+  enden.push([p[p.length - 2], p[p.length - 1], st.art, st]);
 }
-for (const [x, y, art] of enden) {
-  if (art === 'haupt') continue;
+for (const [x, y, art, eigene] of enden) {
+  if (art !== 'gasse') continue; // Feldwege zu Höfen dürfen enden
   const tx = Math.floor(x / 1000), ty = Math.floor(y / 1000);
   let andere = 0;
   for (const st of z.strassen) {
+    if (st === eigene) continue;
     const p = st.punkte;
-    for (let i = 0; i < p.length - 2; i += 2) if (Math.abs(Math.floor(p[i] / 1000) - tx) <= 1 && Math.abs(Math.floor(p[i + 1] / 1000) - ty) <= 1 && !(p[i] === x && p[i + 1] === y)) { andere++; break; }
+    for (let i = 0; i + 3 < p.length; i += 2) {
+      const dx = p[i + 2] - p[i], dy = p[i + 3] - p[i + 1], l2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((x - p[i]) * dx + (y - p[i + 1]) * dy) / l2));
+      if (Math.hypot(x - p[i] - dx * t, y - p[i + 1] - dy * t) < st.breite / 2 + 600) { andere++; break; }
+    }
   }
-  if (andere <= 1) sackgassen++;
+  if (!andere) { sackgassen++; if (z.zone[ty * KARTE_B + tx] === 1) sackWohn++; }
 }
 const st = stadtStatus(z, 0);
 let wohnland = 0, wohnFrei = 0;
 for (let i = 0; i < z.zone.length; i++) if (z.zone[i] === 1) { wohnland++; if (!c.belegt[i] && !c.strasse[i]) wohnFrei++; }
-console.log(`Tag ${Math.floor(z.tick / 600)} · Straßen ${z.strassen.length} (${laenge.toFixed(0)} Kacheln) · scharfe Knicke ${knicke} (${(knicke / Math.max(1, laenge) * 10).toFixed(2)} je 10 Kacheln) · Sackgassen ${sackgassen}`);
+console.log(`Tag ${Math.floor(z.tick / 600)} · Straßen ${z.strassen.length} (${laenge.toFixed(0)} Kacheln) · scharfe Knicke ${knicke} (${(knicke / Math.max(1, laenge) * 10).toFixed(2)} je 10 Kacheln) · Gassen-Sackgassen ${sackgassen} (im Wohnland ${sackWohn})`);
 console.log(`Häuser ${st.haeuser} · Wohnplätze ${st.wohnKap} · Wohnland ${wohnland} Kacheln, davon unbebaut ${wohnFrei} · Dichte ${(st.wohnKap / Math.max(1, wohnland - wohnFrei)).toFixed(2)} Plätze je bebauter Kachel`);
 console.log('Baumeister:', z.herren[0].planLog.slice(-6).join(' | '));

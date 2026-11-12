@@ -16,7 +16,7 @@ import { abgeleitet, objekteNahe } from './abgeleitet.js';
 import { findePfad } from './pfad.js';
 import { strasseHinzufuegen, glaetten, anbinden } from './strassen.js';
 import { vorratReicht } from './wirtschaft.js';
-import { begradigen, planeWohngasse, platzRandPlaetze } from './stadtplaner.js';
+import { begradigen, planeWohngasse, platzRandPlaetze, gassenEndeAnschliessen } from './stadtplaner.js';
 import { geben, nehmen, leer } from './lager.js';
 import { ecken, lokal, ueberlappt, abstandStrecke, abstand, kachel, winkelVon, wnorm, zufall, COS, SIN, meldung } from './lib.js';
 
@@ -233,7 +233,7 @@ export function gebaeudeAnlegen(z, herr, art, o, opt = {}) {
   if (typ.lager) g.inhalt = leer();
   if (opt.wohn) g.wohn = opt.wohn;
   if (art === 'schmiede') { g.produkt = 'speere'; g.pufferWaren = { speere: 0, boegen: 0 }; }
-  if (typ.plaetze) g.ausbildung = 'speer';
+  if (typ.plaetze) { g.auto = 'aus'; g.warteschlange = []; }
   z.gebaeude.push(g);
   roden(z, herr, g, 300);
   for (const f of opt.felder || []) {
@@ -329,7 +329,8 @@ export function planeGasse(z, herr, zone) {
   }
   if (pfad.length + verl * 2 < 5) return false;
   const imZone = pfad.filter((i) => z.zone[i] === zone).length;
-  strasseHinzufuegen(z, begradigen(z, pfad.concat(ext), null, null), imZone * 2 >= pfad.length ? 'gasse' : 'weg');
+  // WARUM 'weg': Außerhalb des Wohnlands sind es Feldwege (zwei Fahrspuren, Grasnarbe), die am Hof enden dürfen.
+  strasseHinzufuegen(z, begradigen(z, pfad.concat(ext), null, null), zone === 1 && imZone * 2 >= pfad.length ? 'gasse' : 'weg');
   return true;
 }
 
@@ -426,9 +427,13 @@ export function planungsSchritt(z, herr) {
     versuche(z, herr, 'haus');
   }
   if (zweiterSpeicher(z, herr, st)) return;
+  // Einmal je halbem Tag: offene Gassenenden an Nachbarstraßen anschließen (Schleifen statt Sackgassen)
+  if (z.tick % 300 === 50) { const pts = gassenEndeAnschliessen(z); if (pts) { strasseHinzufuegen(z, pts, 'gasse'); log(z, herr, 'Gasse angeschlossen'); } }
   // Arbeit: freie Hände minus Reserve für das Anwerben
   const freiePlaetze = Math.max(0, st.plaetze - st.soldaten);
-  const rekrutReserve = h.anwerben ? Math.min(3, freiePlaetze) : 0;
+  let gewollt = 0;
+  for (const g of z.gebaeude) if (g.besitzer === herr && g.zustand === 'fertig' && GEBAEUDE[g.art].plaetze) gewollt += (g.warteschlange ? g.warteschlange.length : 0) + (g.auto && g.auto !== 'aus' ? 3 : 0);
+  const rekrutReserve = Math.min(3, freiePlaetze, gewollt);
   const frei = h.arbeitslos - st.arbeiterReserviert - rekrutReserve;
   if (frei < 1) return;
   const wunsch = [];

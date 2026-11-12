@@ -674,3 +674,46 @@ export function tierSprite(art, phase) {
   tierCache.set(key, cv);
   return cv;
 }
+
+// ── Straßenbeläge (nahtlos kachelbar, 128 px = 2 Kacheln) ───────────────
+const belagCache = new Map();
+/** art: 'pflaster' | 'erde' | 'kies'. Gibt ein Canvas zurück, das sich nahtlos wiederholt. */
+export function strassenBelag(art) {
+  if (belagCache.has(art)) return belagCache.get(art);
+  const S = 128, cv = canvas(S, S), ctx = cv.getContext('2d');
+  const r = rnd(art === 'pflaster' ? 11 : art === 'erde' ? 22 : 33);
+  // an allen Rändern spiegeln, damit die Kachel nahtlos ist
+  const punkt = (x, y, f) => { for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) f(x + dx, y + dy); };
+  if (art === 'pflaster') {
+    ctx.fillStyle = '#6e6458'; ctx.fillRect(0, 0, S, S);
+    const st = 9;
+    for (let y = 0, reihe = 0; y < S; y += st * 0.8, reihe++) {
+      for (let x = (reihe % 2) * st / 2; x < S; x += st) {
+        const f = 0.78 + r() * 0.36, w = r() * 3, ex = (r() - 0.5) * 1.5, ey = (r() - 0.5) * 1.5;
+        punkt(x + ex, y + ey, (px, py) => {
+          ctx.fillStyle = css(hell([162, 152, 134], f));
+          ctx.beginPath(); ctx.ellipse(px, py, st * 0.42, st * 0.34, w, 0, 7); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.ellipse(px - 1, py - 1, st * 0.2, st * 0.14, w, 0, 7); ctx.fill();
+        });
+      }
+    }
+  } else if (art === 'erde') {
+    ctx.fillStyle = '#9c8460'; ctx.fillRect(0, 0, S, S);
+    for (let i = 0; i < 260; i++) {
+      const x = r() * S, y = r() * S, g = 1 + r() * 3.5, f = 0.8 + r() * 0.35;
+      punkt(x, y, (px, py) => { ctx.fillStyle = css(hell([150, 126, 92], f), 0.55); ctx.beginPath(); ctx.ellipse(px, py, g, g * 0.7, r(), 0, 7); ctx.fill(); });
+    }
+    for (let i = 0; i < 70; i++) {
+      const x = r() * S, y = r() * S;
+      punkt(x, y, (px, py) => { ctx.fillStyle = r() < 0.5 ? 'rgba(200,190,170,0.8)' : 'rgba(90,74,54,0.7)'; ctx.fillRect(px, py, 1.6, 1.6); });
+    }
+  } else {
+    ctx.fillStyle = '#a89878'; ctx.fillRect(0, 0, S, S);
+    for (let i = 0; i < 520; i++) {
+      const x = r() * S, y = r() * S, f = 0.7 + r() * 0.5;
+      punkt(x, y, (px, py) => { ctx.fillStyle = css(hell([176, 164, 140], f)); ctx.beginPath(); ctx.arc(px, py, 0.9 + r() * 1.3, 0, 7); ctx.fill(); });
+    }
+  }
+  belagCache.set(art, cv);
+  return cv;
+}

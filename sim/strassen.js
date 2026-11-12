@@ -46,6 +46,8 @@ export function strasseHinzufuegen(z, punkte, art) {
   if (punkte.length < 4) return null;
   const s = { id: z.strassen.length, punkte, breite: BREITE[art], art };
   z.strassen.push(s);
+  // Neue Straße: offene Gassenenden dürfen erneut prüfen, ob sie jetzt anschließen können.
+  for (const t of z.strassen) if (t.angeschlossen) delete t.angeschlossen;
   z.version++;
   toreSetzen(z);
   return s;

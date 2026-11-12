@@ -185,3 +185,50 @@ export function platzRandPlaetze(z, platz, b, t) {
   }
   return out;
 }
+
+/**
+ * Offene Gassenenden nachträglich anschließen: Liegt in Verlängerung (±30°) innerhalb von 7 Kacheln eine andere
+ * Straße und ist der Weg frei und nicht zu steil, wird die Lücke geschlossen. So entstehen Schleifen und
+ * Querverbindungen wie in gewachsenen Städten statt Stichwegen, die im Nichts enden.
+ * Gibt die neue Punktliste zurück oder null.
+ */
+export function gassenEndeAnschliessen(z) {
+  const k = karteFuer(z.seed), c = abgeleitet(z);
+  for (const s of z.strassen) {
+    if (s.art !== 'gasse' || s.angeschlossen) continue;
+    const p = s.punkte, n = p.length / 2;
+    if (n < 2) continue;
+    const ex = p[p.length - 2], ey = p[p.length - 1], vx = p[p.length - 4], vy = p[p.length - 3];
+    // Endet schon an einer anderen Straße?
+    let schonVerbunden = false;
+    for (const t of z.strassen) {
+      if (t === s) continue;
+      const q = t.punkte;
+      for (let i = 0; i + 3 < q.length; i += 2) {
+        const dx = q[i + 2] - q[i], dy = q[i + 3] - q[i + 1], l2 = dx * dx + dy * dy || 1;
+        let tt = ((ex - q[i]) * dx + (ey - q[i + 1]) * dy) / l2; tt = Math.max(0, Math.min(1, tt));
+        if (abstand(ex, ey, q[i] + Math.trunc(dx * tt), q[i + 1] + Math.trunc(dy * tt)) < t.breite / 2 + 500) { schonVerbunden = true; break; }
+      }
+      if (schonVerbunden) break;
+    }
+    if (schonVerbunden) { s.angeschlossen = true; continue; }
+    const w0 = winkelVon(ex - vx, ey - vy);
+    for (const dw of [0, -15, 15, -30, 30]) {
+      const w = wnorm(w0 + dw);
+      let cx = ex, cy = ey, ok = false;
+      const pts = [ex, ey];
+      for (let st = 1; st <= 7; st++) {
+        const nx = ex + Math.trunc(COS[w] * st * 1000 / 1024), ny = ey + Math.trunc(SIN[w] * st * 1000 / 1024);
+        const t = kachel(nx, ny);
+        if (t < 0 || t >= KARTE_B * KARTE_H) break;
+        if (Math.abs(k.hoehe[t] - k.hoehe[kachel(cx, cy)]) > 45) break;
+        if (st >= 2 && c.strasse[t] && abstand(nx, ny, ex, ey) > 1200) { pts.push(nx, ny); ok = true; break; }
+        if (k.wasser[t] || c.belegt[t] || c.feld[t] || c.mauer[t]) break;
+        cx = nx; cy = ny;
+      }
+      if (ok) { s.angeschlossen = true; return pts; }
+    }
+    s.angeschlossen = true; // nicht ständig neu prüfen; bei neuen Straßen erneut (siehe strassen.js)
+  }
+  return null;
+}

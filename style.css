@@ -92,3 +92,19 @@ h3 { font: 13px Georgia, serif; color: var(--gold); margin: 10px 0 4px; }
 .wahl { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; color: var(--text2); font-size: 12px; }
 .wahl button { padding: 2px 7px; font-size: 12px; }
 .wahl select { background: #2a2219; color: var(--text); border: 1px solid var(--rand); border-radius: 4px; font: inherit; padding: 2px; }
+
+/* Sofort-Tooltips für alles mit data-tipp (Ressourcen, Rekruten …) */
+[data-tipp] { position: relative; }
+[data-tipp]:hover::after { content: attr(data-tipp); position: absolute; left: 0; top: calc(100% + 6px); z-index: 20; white-space: nowrap;
+  background: rgba(20,16,12,0.96); color: var(--text); border: 1px solid var(--rand); border-radius: 4px; padding: 3px 8px;
+  font-size: 12px; font-weight: normal; pointer-events: none; }
+#info [data-tipp]:hover::after { top: auto; bottom: calc(100% + 4px); white-space: normal; width: 260px; }
+#waren span { cursor: default; }
+.rekrut { margin-top: 6px; border-top: 1px solid #4a3d2a; padding-top: 5px; }
+.rzeile { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 3px 0; }
+.rzeile small { color: var(--text2); }
+.rzeile button, .rekrut .klein button { padding: 1px 7px; margin-left: 3px; font-size: 12px; }
+#tipp .inhalt { grid-template-columns: repeat(2, auto); }
+#info .inhalt { display: grid; grid-template-columns: repeat(4, auto); gap: 3px 12px; }
+
+#links [data-tipp]:hover::after { white-space: normal; width: 220px; }

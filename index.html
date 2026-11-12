@@ -5,6 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lehnsherr von Eschenbrück</title>
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Fehlerlog: Browser-Fehler gehen an den Entwicklungsserver (Datei fehler.log im Spielordner).
+    (function () {
+      const gesendet = new Set();
+      function melde(text) {
+        if (gesendet.has(text) || gesendet.size > 60) return;
+        gesendet.add(text);
+        try { fetch('/fehlerlog', { method: 'POST', body: text }).catch(function () {}); } catch (e) { /* egal */ }
+      }
+      addEventListener('error', function (e) {
+        if (e.target && e.target !== window && (e.target.src || e.target.href)) { melde('LADEFEHLER ' + (e.target.src || e.target.href)); return; }
+        melde('FEHLER ' + (e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || '') + ' | ' + ((e.error && e.error.stack) || '').split(String.fromCharCode(10)).join(' | '));
+      }, true);
+      addEventListener('unhandledrejection', function (e) { melde('PROMISE ' + ((e.reason && e.reason.stack) || e.reason)); });
+      window.fehlerMelden = melde;
+    })();
+  </script>
 </head>
 <body>
   <canvas id="welt"></canvas>
@@ -55,7 +72,8 @@
         <li><b>Du bist nicht der Stadtplaner.</b> Du <b>schreibst Land aus</b> (links: Wohnland, Acker, Weide, Forst,
           Bergbau) — der Baumeister legt dort Gassen, Höfe, Felder und Häuser selbst an, wenn Leute, Holz und Bedarf da sind.</li>
         <li><b>Militär gibst du selbst in Auftrag:</b> Kaserne, Wachturm, Waffenschmiede, Palisade, Steinmauer.
-          Soldaten brauchen Waffen (Holz + Eisen aus der Erzgrube), Gold und freie Bewohner.</li>
+          Soldaten rekrutierst du selbst: Burg oder Kaserne anklicken, +1/+5 (je 1 Speer oder Bogen, 8 Gold, 1 Bewohner;
+          Unterhalt 1 Nahrung + ⅓ Gold pro Tag). Auf Wunsch füllen sie automatisch auf.</li>
         <li><b>Vier Bedürfnisse:</b> Nahrung, Unterkunft, Wärme (Brennholz im Herbst/Winter), Sicherheit.
           Zufriedene Städte wachsen. <b>Felder tragen nur einmal im Jahr</b> — der Winter lebt vom Vorrat.</li>
         <li><b>Karte:</b> Rad = zoomen (ganz nah ran!), <b>rechte oder mittlere Taste ziehen</b> oder WASD = verschieben,

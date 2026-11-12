@@ -11,7 +11,7 @@ import { erzeugeZustand } from './sim/zustand.js';
 import { hashZustand } from './sim/lib.js';
 import { lokaleVerbindung } from './netz/lokal.js';
 import { TICKS_PRO_SEKUNDE } from './data/werte.js';
-import { neueKamera, begrenze } from './render/kamera.js';
+import { neueKamera, begrenze, setzeZoom, fliegeZu } from './render/kamera.js';
 import { erzeugeSzene, zeichneSzene } from './render/szene.js';
 import { erzeugePanels } from './ui/panels.js';
 import { verbindeEingabe } from './eingabe/maus.js';
@@ -48,9 +48,9 @@ function werkzeug(w) {
   eingabe && eingabe.geistAktualisieren();
   panels.aktualisiere();
 }
-function zurBurg() {
+function zurBurg(sofort = false) {
   const b = zustand.gebaeude[zustand.herren[0].burg], m = zustand.gebaeude[zustand.herren[0].markt];
-  kamera.x = (b.x + m.x) / 2000; kamera.y = (b.y + m.y) / 2000;
+  if (sofort) { kamera.x = (b.x + m.x) / 2000; kamera.y = (b.y + m.y) / 2000; } else fliegeZu(kamera, (b.x + m.x) / 2000, (b.y + m.y) / 2000);
 }
 
 const panels = erzeugePanels(() => verbindung, ui, { setzeTempo, werkzeug });
@@ -110,8 +110,8 @@ function zeigeEnde() {
   document.getElementById('ende').classList.remove('versteckt');
 }
 
-zurBurg();
-kamera.zoom = 34;
+zurBurg(true);
+setzeZoom(kamera, 34);
 requestAnimationFrame(bild);
 
 // Nur zum Debuggen in der Browser-Konsole.

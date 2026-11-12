@@ -22,7 +22,7 @@ import { winkelVon, wnorm, kachel, abstand, lokal, SIN, COS } from './lib.js';
 function neuerHerr(id, name) {
   return {
     id, name, burg: -1, markt: -1, lager: leer(), bewohner: START.bewohner, laune: START.laune,
-    steuer: 1, anwerben: true, arbeitslos: 0, beduerfnisse: { nahrung: 100, wohnen: 100, waerme: 100, sicherheit: 50 },
+    steuer: 1, arbeitslos: 0, beduerfnisse: { nahrung: 100, wohnen: 100, waerme: 100, sicherheit: 50 },
     ueberfallMalus: 0, sammelpunkt: null, satteTage: 0, heute: {}, gestern: {}, chronik: [], meldeSperre: {}, planLog: [],
   };
 }

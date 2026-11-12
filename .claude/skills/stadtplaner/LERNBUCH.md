@@ -37,3 +37,43 @@ Sackgassen-Zähler 30 — zählt aber auch Feldwege zu Höfen mit; nächste Rund
 
 **Offen für Runde 2:** Sackgassen nur im Wohnland zählen; Gassenenden ohne Anschluss nachträglich an die nächste
 Straße anbinden, sobald dort gebaut ist; Häuser auch in zweiter Reihe am Platz; Stadtmauer-Ring als Planungsgrenze.
+
+---
+
+## 2026-11-12 — Runde 2: „Straßenführung immer noch nicht immersiv, Aussehen überarbeiten“
+
+**Beobachtung (Nutzer):** Straßen wirken noch künstlich; Optik zu einheitlich (heller Strich mit Rand).
+
+**Ursachen:**
+1. Optik: ein einziger Farbton mit runder Kappe und dunkler Kontur — sieht aus wie ein gemalter Schlauch.
+2. Lineal-gerade Strecken mit Bogen-Ecken wirken geplant, nicht gefahren.
+3. Feldwege im Ackerland liefen als „gasse“ und wurden wie Stadtgassen gezählt und gezeichnet.
+4. Gassenenden blieben offen, auch wenn später daneben eine Straße entstand.
+
+**Änderungen:**
+- Darstellung (`render/szene.js` → `strassenCache`, `zeichneStrassen`): alle 0,5 Kacheln abgetastet, ganz leichte
+  Querschwingung (≤ 14 % der Breite, an Enden/Brücken null) und Catmull-Rom-Kurven; ausgetretener, unregelmäßiger
+  Wegrand; Beläge als Muster (`sprites.strassenBelag`): **Pflaster** im Stadtkern (≤ 10 Kacheln vom Markt),
+  **Kies** auf der Handelsstraße außerhalb, **Erde** in Gassen; **Feldwege** mit zwei Fahrspuren und Grasnarbe;
+  blasse, unterbrochene Radspuren (durchgezogene sahen aus wie Schienen); Brücken mit Geländer und Pfosten;
+  Hausgärten hinter Wohnhäusern.
+- Simulation: Zufahrten außerhalb des Wohnlands sind immer `weg` (Feldweg); `gassenEndeAnschliessen()` schließt
+  offene Gassenenden (±30°, ≤ 7 Kacheln, Hang ≤ 45) an Nachbarstraßen an, sobald sich neue Straßen ergeben.
+- Messwerkzeug: Sackgassen nur für Gassen, getrennt „im Wohnland“; eigene Straße zählt nicht als Anschluss.
+
+**Messung (Tag 20, kluger Bot):**
+| Seed | Knicke/10 Kacheln | Gassen-Sackgassen (im Wohnland) |
+|---|---|---|
+| 42 | 0,37 | 3 (3) |
+| 7 | 0,51 | 2 (2) |
+| 99 | 0,44 | 1 (1) |
+Vorher (gleicher Zähler, Feldwege noch als Gasse): 13 / 9 / 13 Sackgassen.
+
+**Lehren:**
+- Immersion entsteht zu großen Teilen in der Darstellung (Belag, Rand, Spuren) — die Geometrie darf gerade sein,
+  das Bild nicht lineal-glatt.
+- Kennzahlen zuerst ehrlich machen (falscher Sackgassen-Zähler hat jede Straße mitgezählt).
+- Radspuren nur angedeutet; zu deutlich = Schienen/Würmer.
+
+**Offen für Runde 3:** Seed 7 hat 0,51 Knicke — Ursache suchen (vermutlich Hangstraßen am Burgberg);
+Platz- und Kreuzungsaufweitungen (Dreiecksplätze an Gabelungen); Häuser an Kreuzungen über Eck stellen.

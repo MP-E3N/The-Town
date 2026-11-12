@@ -13,8 +13,8 @@ export const GEBAEUDE = {
   platz: { name: 'Marktplatz', b: 7600, t: 4600, begehbar: true },
   speicher: { name: 'Speicher', b: 2200, t: 2800, kosten: { holz: 30 }, arbeit: 900, hp: 400, lager: true },
   haus: { name: 'Wohnhaus', b: 1150, t: 1600, kosten: { holz: 8 }, arbeit: 450, hp: 150, wohnplaetze: 5, zone: 1 },
-  hof: { name: 'Bauernhof', b: 1800, t: 2100, kosten: { holz: 14 }, arbeit: 600, hp: 220, arbeiter: 2, zone: 2, ware: 'nahrung', gruppe: 0 },
-  viehhof: { name: 'Viehhof', b: 1700, t: 2300, kosten: { holz: 12 }, arbeit: 550, hp: 200, arbeiter: 2, zone: 3, ware: 'nahrung', ticksProEinheit: 500, gruppe: 0 },
+  hof: { name: 'Bauernhof', b: 1800, t: 2100, kosten: { holz: 14 }, arbeit: 600, hp: 220, arbeiter: 2, wohnplaetze: 4, zone: 2, ware: 'nahrung', gruppe: 0 },
+  viehhof: { name: 'Viehhof', b: 1700, t: 2300, kosten: { holz: 12 }, arbeit: 550, hp: 200, arbeiter: 2, wohnplaetze: 3, zone: 3, ware: 'nahrung', ticksProEinheit: 500, gruppe: 0 },
   fischer: { name: 'Fischerhütte', b: 1100, t: 1300, kosten: { holz: 6 }, arbeit: 300, hp: 120, arbeiter: 1, zone: 1, ware: 'nahrung', ticksProEinheit: 350, gruppe: 0, amWasser: true },
   holzfaeller: { name: 'Holzfäller', b: 1300, t: 1500, kosten: { holz: 6 }, arbeit: 350, hp: 140, arbeiter: 2, zone: 4, ware: 'holz', ticksProEinheit: 220, gruppe: 1 },
   steinbruch: { name: 'Steinbruch', b: 1500, t: 1500, kosten: { holz: 10 }, arbeit: 400, hp: 160, arbeiter: 2, zone: 5, ware: 'stein', ticksProEinheit: 300, gruppe: 3, braucht: 'fels' },
@@ -51,6 +51,6 @@ export const SCHMIEDE_PRODUKTE = {
 
 /** Wen Burg und Kaserne ausbilden können. */
 export const AUSBILDUNG = {
-  speer: { name: 'Speerträger', waffe: 'speere' },
-  bogen: { name: 'Bogenschützen', waffe: 'boegen' },
+  speer: { name: 'Speerträger', einer: 'Ein Speerträger', waffe: 'speere', text: 'Nahkämpfer, robust (100 Leben)' },
+  bogen: { name: 'Bogenschützen', einer: 'Ein Bogenschütze', waffe: 'boegen', text: 'schießt auf 4,5 Kacheln, schwächer im Nahkampf (70 Leben)' },
 };

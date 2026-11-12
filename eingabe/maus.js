@@ -8,7 +8,7 @@
  */
 
 import { GEBAEUDE } from '../data/gebaeude.js';
-import { zuWelt, zoomeUm, begrenze } from '../render/kamera.js';
+import { zuWelt, zoomeUm, begrenze, kameraSchritt } from '../render/kamera.js';
 import { auftragPruefen } from '../sim/befehle.js';
 import { abgeleitet } from '../sim/abgeleitet.js';
 import { punktIn, wnorm } from '../sim/lib.js';
@@ -88,6 +88,7 @@ export function verbindeEingabe(canvas, a) {
     ui.maus = p;
     const w = ui.werkzeug;
     if (e.button === 1 || e.button === 2) {
+      kamera.anker = null; kamera.zielZoom = kamera.zoom; kamera.flug = null;
       ziehen = { art: 'schieben', sx: e.clientX, sy: e.clientY, kx: kamera.x, ky: kamera.y, bewegt: false, knopf: e.button };
       return;
     }
@@ -181,11 +182,14 @@ export function verbindeEingabe(canvas, a) {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (e.shiftKey && ui.werkzeug && ui.werkzeug.typ === 'bauen') { ui.drehung += e.deltaY > 0 ? 15 : -15; geistAktualisieren(); return; }
-    zoomeUm(kamera, e.deltaY > 0 ? 1 / 1.15 : 1.15, e.clientX, e.clientY);
+    // WARUM exp(delta): Mausrad (große Schritte) und Touchpad (viele kleine) zoomen gleich weich.
+    const d = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+    zoomeUm(kamera, Math.exp(-Math.max(-300, Math.min(300, d)) * 0.0016), e.clientX, e.clientY);
   }, { passive: false });
 
   addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+    if (!e.key) return; // z. B. Autofill-Ereignisse ohne Taste
     const t = e.key.toLowerCase();
     tasten.add(t);
     if (t === ' ') { e.preventDefault(); a.setzeTempo(a.verbindung().pause ? a.letztesTempo() : 0); }
@@ -203,17 +207,16 @@ export function verbindeEingabe(canvas, a) {
       else { ui.einheiten.clear(); ui.auswahl = -1; a.auswahlGeaendert(); }
     } else if (t === 'h') a.zurBurg();
   });
-  addEventListener('keyup', (e) => tasten.delete(e.key.toLowerCase()));
+  addEventListener('keyup', (e) => { if (e.key) tasten.delete(e.key.toLowerCase()); });
+  addEventListener('blur', () => tasten.clear());
 
   return {
     /** Tastatur-Verschieben (jedes Bild). */
     schritt(dt) {
-      const s = 600 / kamera.zoom * dt;
-      if (tasten.has('a') || tasten.has('arrowleft')) kamera.x -= s;
-      if (tasten.has('d') || tasten.has('arrowright')) kamera.x += s;
-      if (tasten.has('w') || tasten.has('arrowup')) kamera.y -= s;
-      if (tasten.has('s') || tasten.has('arrowdown')) kamera.y += s;
-      begrenze(kamera);
+      const rx = (tasten.has('d') || tasten.has('arrowright') ? 1 : 0) - (tasten.has('a') || tasten.has('arrowleft') ? 1 : 0);
+      const ry = (tasten.has('s') || tasten.has('arrowdown') ? 1 : 0) - (tasten.has('w') || tasten.has('arrowup') ? 1 : 0);
+      const l = Math.hypot(rx, ry) || 1;
+      kameraSchritt(kamera, Math.min(0.1, dt), { x: rx / l, y: ry / l });
     },
     geistAktualisieren,
   };
