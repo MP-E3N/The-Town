@@ -1,6 +1,7 @@
 # Lehnsherr von Eschenbrück — Arbeitsregeln für KI-Agenten
 
-Konzept: `KONZEPT.md` · Stand: `HANDOFF.md` · Multiplayer-Plan: `netz/PROTOKOLL.md`.
+Überblick: `PROJEKT.md` · Konzept: `KONZEPT.md` · Stand: `HANDOFF.md` · Multiplayer-Plan: `netz/PROTOKOLL.md`.
+Browser-Fehler aus Spieltests: `fehler.log` (zu Beginn lesen).
 **Zu Beginn jeder Sitzung `HANDOFF.md` lesen, am Ende aktualisieren.**
 Gleicher Unterbau wie die Schwesterprojekte `..\Stadtwacht`, `..\Kronwege`, `..\Eiskoloss`.
 

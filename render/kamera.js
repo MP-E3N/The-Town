@@ -40,23 +40,25 @@ export function fliegeZu(k, x, y) { k.flug = { x, y }; }
  */
 export function kameraSchritt(k, dt, richtung) {
   if (k.anker) {
-    const f = 1 - Math.exp(-dt * 14);
+    // WARUM 30: Halbwertszeit ≈ 23 ms – folgt dem Rad sofort, glättet nur die Sprünge (14 wirkte verzögert).
+    const f = 1 - Math.exp(-dt * 30);
     const lz = Math.log(k.zoom) + (Math.log(k.zielZoom) - Math.log(k.zoom)) * f;
     k.zoom = Math.exp(lz);
-    if (Math.abs(k.zoom - k.zielZoom) < 0.01) k.zoom = k.zielZoom;
+    if (Math.abs(Math.log(k.zoom / k.zielZoom)) < 0.004) k.zoom = k.zielZoom;
     // Anker festhalten: derselbe Weltpunkt bleibt unter derselben Bildschirmstelle
     k.x = k.anker.wx - (k.anker.sx - k.b / 2) / k.zoom;
     k.y = k.anker.wy - (k.anker.sy - k.h / 2) / k.zoom;
     if (k.zoom === k.zielZoom) k.anker = null;
   }
   // WASD: Zielgeschwindigkeit in Bildschirm-Pixeln/s, weich angenähert
-  const tempo = 700 / k.zoom;
-  const g = 1 - Math.exp(-dt * (richtung.x || richtung.y ? 10 : 7));
+  const tempo = 900 / k.zoom;
+  // Anfahren ≈ 30 ms, Bremsen ≈ 40 ms: direkt, aber ohne Ruck.
+  const g = 1 - Math.exp(-dt * (richtung.x || richtung.y ? 24 : 18));
   k.vx += (richtung.x * tempo - k.vx) * g;
   k.vy += (richtung.y * tempo - k.vy) * g;
   if (Math.abs(k.vx) + Math.abs(k.vy) > 0.001) { k.x += k.vx * dt; k.y += k.vy * dt; k.flug = null; if (k.anker) { k.anker.wx += k.vx * dt; k.anker.wy += k.vy * dt; } }
   if (k.flug) {
-    const f = 1 - Math.exp(-dt * 5);
+    const f = 1 - Math.exp(-dt * 9);
     k.x += (k.flug.x - k.x) * f; k.y += (k.flug.y - k.y) * f;
     if (Math.abs(k.flug.x - k.x) + Math.abs(k.flug.y - k.y) < 0.02) k.flug = null;
   }

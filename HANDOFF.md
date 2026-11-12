@@ -1,81 +1,55 @@
 # HANDOFF — Lehnsherr von Eschenbrück
 
-## Stand (2026-11-12): Runde 2 nach erstem Spieltest (Git: github.com/MP-E3N/The-Town)
+Übergabe für die nächste Sitzung. Überblick über das ganze Projekt: `PROJEKT.md`. Konzept: `KONZEPT.md`.
 
-### Neu in Runde 3 (zweiter Spieltest: „macht auf jeden Fall schon Laune“)
-- **Fehlerlog:** Browser-Fehler landen automatisch in `Lehnsherr/fehler.log` (POST /fehlerlog an `serve.ps1`, das
-  jetzt auch `Cache-Control: no-store` sendet). Vor jeder Runde lesen.
-- **Straßen:** neue Optik (Pflaster/Kies/Erde, Feldwege mit Grasnarbe, Wegrand, Radspuren, Brückengeländer),
-  natürliche Kurven, offene Gassenenden werden angeschlossen; Hausgärten. Details: Stadtplaner-Lernbuch Runde 2.
-- **Kamera:** weicher Zoom zum Mauszeiger (auch Touchpad), WASD mit Beschleunigung, H fliegt zur Burg.
-- **Rekrutieren nur auf Befehl:** Burg/Kaserne anklicken → +1/+5 Speerträger/Bogenschützen (Warteschlange);
-  „Automatisch auffüllen“ je Gebäude, Standard aus. Preis und Unterhalt im Infofenster und rechts unter „Militär“.
-- **Tooltips:** Ressourcen, Lager-Inhalt, Knöpfe zeigen beim Überfahren sofort Name und Zweck.
-- **Höfe wohnen mit:** Bauernhof 4, Viehhof 3 Wohnplätze.
+## Stand (2026-11-12, nach Runde 4)
+- Git: `origin` = github.com/MP-E3N/The-Town, Branch `main`, alles committet und gepusht.
+- Tests: `node tests/sim.test.js` → „ALLES GRUEN“ (≈ 6 s). Kluger Bot gewinnt 5/5 Karten an Tag 24–37.
+- Nutzer hat zweimal gespielt: „guter Wuselfaktor“, „macht auf jeden Fall schon Laune“.
+- Starten: Vorschau „lehnsherr“ (Port 5178) oder
+  `powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr` → http://localhost:5178 (`?seed=42`).
 
-### Neu in Runde 2 (Nutzerwünsche nach dem ersten Spieltest)
-- **Performance:** Bäume + Gras in vorgezeichneten Chunks (`render/deko.js`), Gelände-Chunks im Leerlauf vorberechnet,
-  schnellerer Pixel-Renderer, DPR max. 1,5, weniger Rauch. 1920×1080: Zoom 14 von 62 → 5 ms, Zoom 20 von 39 → 4 ms.
-- **Stadtplaner** (`sim/stadtplaner.js` + Skill `.claude/skills/stadtplaner` mit LERNBUCH): Straßen begradigt
-  (gerade Strecken, Bögen, Hang-Grenze), Wohngassen als T-Abzweig mit Blocktiefe und Anschluss, keine Stichwege im
-  Wohnland, dichte Zeilenbebauung, Bürgerhäuser (8 Plätze) im Kern, Häuser mit Front zum Markt. Messwerkzeug `tools/stadtplan.mjs`.
-- **Marktplatz neu:** länglicher Straßenmarkt entlang der Handelsstraße, Pflaster, Stände mit Markisen und Waren,
-  Marktbrunnen, Marktkreuz, Viehgatter, Händler + Käufer (Optik); **Rathaus** mit Laubengang und Dachreiter, **Kirche** geostet.
-- **Lager:** Waren liegen wirklich in Speicher und Burg (`sim/lager.js`); Entnahme vom nächsten Lager; Speicher
-  brennt → Inhalt weg. Maus über Lager = Inhalt; Lager anklicken = **Umlagern** (Träger laufen, Befehl `transfer`).
-- **Militär:** Speerträger und **Bogenschützen** (schießen auf Abstand); Burg/Kaserne: Ausbildung wählen
-  (Speer/Bogen/niemand); Schmiede: Speere (Holz+Eisen) oder Bögen (2 Holz). **RTS-Steuerung:** Rahmen ziehen/anklicken,
-  Rechtsklick = marschieren+halten bzw. angreifen, G = alle, F = auf eigene Faust, Doppelklick = alle dieser Art.
-- Steuerung geändert: Karte verschieben mit rechter/mittlerer Taste ziehen oder WASD (linke Taste = Auswahlrahmen).
+## Zu Beginn der nächsten Sitzung
+1. `fehler.log` lesen (Browser-Fehler aus den Spieltests des Nutzers; Datei ist in `.gitignore`).
+2. Bei Straßen/Gassen/Häusern/Markt: Skill `stadtplaner` benutzen, `LERNBUCH.md` lesen, mit `tools/stadtplan.mjs` messen.
+3. Nutzer nach dem Gefühl der Kamera fragen (Runde 4 hat sie direkter gemacht).
 
-## Stand Runde 1 (2026-11-12)
-Starten: Vorschau „lehnsherr" (Port 5178) oder
-`powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr` → http://localhost:5178
-Feste Karte: `?seed=42`. Tests: `node tests/sim.test.js` (≈ 6 s, ALLES GRUEN). Git: origin = github.com/MP-E3N/The-Town.
+## Verlauf der Runden
+### Runde 4 — Kamera direkter
+- Nutzer: Zoom und WASD „zu schwammig, fühlt sich wie ein Delay an“.
+- `render/kamera.js`: Zoom-Rate 14 → 30 (Ziel nach ~130 ms, Großteil in 50 ms), WASD Anfahren 10 → 24 / Bremsen 7 → 18
+  (80 % Tempo nach 4 Bildern), Tempo 700 → 900 px/s, Flug zur Burg schneller, Zoom rastet früher ein.
 
-### Enthalten
-- Karte 128×96 aus stetigen Rauschfunktionen: Fluss Ilmbach mit Uferböschung, Burghügel, Erz- und Steinhügel,
-  Wälder (Laub/Nadel), Fruchtbarkeit. Herrschaftsgebiet = 34 Kacheln um die Burg (gestrichelter Kreis).
-- Start: Burg, Marktplatz, Handelsstraße mit Brücke, Speicher, 5–6 Häuser, 1–2 Höfe mit Feldern, Holzfäller,
-  3 Burgwachen — alles vom selben Baumeister gesetzt, der später weiterbaut.
-- **Ausschreiben** (Pinsel): Wohnland, Acker, Weide, Forst, Bergbau, Aufheben.
-- **Baumeister** (`sim/baumeister.js`): Plätze entlang der Straßen, Front zur Straße, leicht gedreht, SAT-Kollision,
-  Hang/Wasser/Fels-Prüfung; neue Gassen per Wegsuche mit Hangkosten; Höfe mit 2–4 gedrehten Feldstreifen,
-  Viehhof mit Weide; zweiter Speicher bei weiten Wegen. Baut Häuser nur, wenn der Vorrat bis zur Ernte reicht.
-- **Wirtschaft**: Arbeiterverteilung nach Priorität, Träger/Erntewagen laufen echte Wege, Felder säen → wachsen →
-  ernten, Winter verdirbt Ungeerntetes, Holzfäller fällen Kartenbäume und forsten auf, Schmiede (Holz+Eisen→Waffen).
-- **4 Bedürfnisse** Nahrung/Unterkunft/Wärme/Sicherheit → Zufriedenheit → Zuzug/Wegzug, Steuer 3 Stufen, Sold.
-- **Militär**: Kaserne (wirbt an), Wachturm (Pfeile), Waffenschmiede, Speicher, Palisade/Steinmauer (Linie,
-  über Straßen automatisch Tor), Sammelpunkt, Abreißen. Räuberbanden ab Tag 9, wachsend; plündern, brennen,
-  reißen Mauern ein, fliehen; Soldaten rücken aus, Beute wird zurückgeholt.
-- **Darstellung**: Gelände-Chunks (8×8 Kacheln, 24/64 px pro Kachel, LRU), Zoom 6–128 px/Kachel,
-  prozedurale Sprites (Dächer Stroh/Ziegel/Schindel/Schiefer, Burg, Kaserne, Turm, Mauern, Bäume je Jahreszeit,
-  Figuren mit 4 Laufbildern + Schlagbild, Schafe/Kühe), Rauch, Funken, Feuer, Staub, Späne, fallende Bäume,
-  Pfeile, Schnee auf Dächern + Schneefall, wogendes Korn, Gras/Blumen beim Nahzoom, Passanten, Zuzügler.
-- Multiplayer-Vorbereitung: Befehle mit `spieler`, `z.herren[]`, `besitzer`, deterministisch, `abspielen()`.
+### Runde 3 — Fehlerlog, Straßen, Rekrutieren
+- **Fehlerlog:** `index.html` schickt Browser-Fehler per POST an `serve.ps1` → `fehler.log`. `serve.ps1` (liegt in
+  `Projekte\`, gilt für alle Projekte) sendet außerdem `Cache-Control: no-store`.
+- **Straßen:** Beläge Pflaster (Kern) / Kies (Handelsstraße außen) / Erde (Gassen), Feldwege mit Grasnarbe, Wegrand,
+  blasse Radspuren, leichte natürliche Kurven (nur Optik), Brückengeländer, Hausgärten; offene Gassenenden werden an
+  Nachbarstraßen angeschlossen; Zufahrten außerhalb des Wohnlands sind Feldwege.
+- **Kamera:** weicher Zoom zum Mauszeiger (Touchpad-fähig), WASD mit Beschleunigung, H fliegt zur Burg.
+- **Rekrutieren nur auf Befehl:** Burg/Kaserne anklicken → +1/+5 Speerträger/Bogenschützen (Warteschlange, leeren);
+  „Automatisch auffüllen“ je Gebäude, Standard aus. Preis/Unterhalt im Infofenster und rechts unter „Militär“.
+- **Tooltips** (`data-tipp`) für Ressourcen, Lager-Inhalt, Knöpfe. **Höfe wohnen mit** (Bauernhof 4, Viehhof 3).
 
-### Balance (tests/bots.js, kluger Bot)
-- Kluger Bot (schreibt Acker/Weide/Forst/Bergbau/Wohnland aus, Schmiede, 2 Kasernen, 1 Turm): Sieg auf 5/5 Karten
-  an Tag 33–39 (= ca. 33–39 Minuten bei Tempo 1, 8–10 Minuten bei Tempo 4).
-- Nichtstun: Stadt verlassen an Tag ~22 (Hunger vor der zweiten Ernte).
-- „5 satte Tage" ist am Anfang leicht; die eigentliche Hürde ist die Garnison (Waffen ← Erz, Gold, freie Leute,
-  Vorrat bis zur Ernte).
+### Runde 2 — Performance, Stadtplaner, Markt, Lager, RTS
+- Bäume/Gras als vorgezeichnete Chunks (`render/deko.js`), Gelände im Leerlauf vorberechnet; 1920×1080 Zoom 14: 62 → 5 ms.
+- Stadtplaner (`sim/stadtplaner.js`): begradigte Straßen, Wohngassen als T-Abzweig mit Blocktiefe, dichte Bebauung,
+  Bürgerhäuser (8 Plätze) im Kern, Häuser mit Front zum Markt. Skill + Lernbuch + Messwerkzeug.
+- Marktplatz als Straßenmarkt mit Ständen, Brunnen, Marktkreuz; Rathaus mit Laubengang; Kirche geostet.
+- Lager je Gebäude (`sim/lager.js`), Umlagern; Speerträger + Bogenschützen; Schmiede wählbar; RTS-Steuerung.
 
-### Selbst getestet (Browser-Fenster, teils per Vorspulen)
-Start/Intro, Übersicht/Mittel/Nah-Zoom, Burg, Markt, Felder (reif/wachsend), Fischer, Winter mit Schnee,
-Zonen malen per Maus-Ziehen, Kaserne-Vorschau (rot „zu steil"/„Straße", grün = ok, Front zur Straße) und Bau,
-Palisade per Klicks inkl. Tor über der Straße, Überfall mit Kampf und Feuer, Gebäude anklicken (Info).
-Zeichenzeit: ~11 ms Übersicht (2000 Bäume), ~2–5 ms nah. Keine Konsolenfehler mehr.
-**Nicht** lange in Echtzeit mit der Maus gespielt (Fenster war teils ausgeblendet); Steinmauer, Sammelpunkt,
-Abreißen-Werkzeug, Steuer-Knöpfe nur kurz bzw. nur in der Simulation geprüft.
+### Runde 1 — Demo
+Karte, Baumeister, Wirtschaft, 4 Bedürfnisse, Militär, Räuber, Jahreszeiten, prozedurale Grafik, Tests, Bots.
 
-### Debug
-Browser-Konsole: `spiel.z` (Zustand), `spiel.v.senden({...})`, `spiel.vorspulen(n)`, `spiel.szene.stat`,
-`spiel.z.herren[0].planLog` (Entscheidungen des Baumeisters). Überfall sofort: `spiel.z.naechsterUeberfall = spiel.z.tick + 1`.
+## Bekannte Schwächen / offen
+- Nicht lange live mit der Maus gespielt (Vorschaufenster war oft ausgeblendet); Bedienung per simulierten Events geprüft.
+- Seed 7: 0,51 scharfe Knicke je 10 Kacheln (Ziel ≤ 0,5) — vermutlich Hangstraßen am Burgberg (Lernbuch Runde 3).
+- Dreiecksplätze an Gabelungen, Eckhäuser an Kreuzungen, Häuser in zweiter Reihe am Markt.
+- Uferböschung recht breit; Burghof wirkt leer.
+- Speichern im Browser fehlt; Mühle/Bäcker, Kirche als 5. Bedürfnis, Markttage, Belagerung.
+- Multiplayer: zweiter Herr mit eigener Burg, dann WebSocket-Lockstep (`netz/PROTOKOLL.md`).
 
-## Ideen / offen
-- Nutzer-Rückmeldung zum Spielspaß abwarten, dann gezielt nachschärfen.
-- Uferböschung ist recht breit (viele Hang-Kacheln am Fluss) → evtl. flacher.
-- Burg-Sprite: Hof wirkt leer; Bergfried größer/mittiger.
-- Speichern im Browser, Mühle/Bäcker, Kirche (5. Bedürfnis), Markttage/Händler, Belagerung.
-- Multiplayer: zweiter Herr mit eigener Burg (siehe `netz/PROTOKOLL.md`), dann Node-WebSocket-Lockstep.
+## Debug
+Browser-Konsole: `spiel.z` (Zustand), `spiel.v.senden({...})`, `spiel.vorspulen(n)`, `spiel.szene.stat` (Zeichenzeit),
+`spiel.z.herren[0].planLog` (Baumeister). Überfall sofort: `spiel.z.naechsterUeberfall = spiel.z.tick + 1`.
+Ausgeblendetes Vorschaufenster: `canvas.width/height` und `spiel.kamera.b/h` von Hand setzen, dann `spiel.vorspulen(0)`.
