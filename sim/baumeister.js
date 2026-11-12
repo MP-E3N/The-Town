@@ -16,6 +16,8 @@ import { abgeleitet, objekteNahe } from './abgeleitet.js';
 import { findePfad } from './pfad.js';
 import { strasseHinzufuegen, glaetten, anbinden } from './strassen.js';
 import { vorratReicht } from './wirtschaft.js';
+import { begradigen, planeWohngasse, platzRandPlaetze } from './stadtplaner.js';
+import { geben, nehmen, leer } from './lager.js';
 import { ecken, lokal, ueberlappt, abstandStrecke, abstand, kachel, winkelVon, wnorm, zufall, COS, SIN, meldung } from './lib.js';
 
 /** Türpunkt (vor der Front, Richtung Straße). */
@@ -104,9 +106,10 @@ function zoneNahe(z, tx, ty, zone, r) {
   return false;
 }
 
-function strassenPlaetze(z, b, t, zone, nahe = 0) {
+function strassenPlaetze(z, b, t, zone, nahe = 0, dicht = false) {
   const out = [];
-  const schritt = b + 380;
+  // WARUM dicht: In der Stadt stehen Häuser Wand an Wand (Zeilenbebauung), draußen mit Abstand.
+  const schritt = b + (dicht ? 90 : 380);
   for (const s of z.strassen) {
     const p = s.punkte;
     let laufend = 0;
@@ -125,7 +128,7 @@ function strassenPlaetze(z, b, t, zone, nahe = 0) {
           const tt = d - laufend;
           const mx = ax + Math.trunc(dx * tt / len), my = ay + Math.trunc(dy * tt / len);
           for (const seite of [1, -1]) {
-            const off = Math.floor(s.breite / 2) + Math.floor(t / 2) + 230;
+            const off = Math.floor(s.breite / 2) + Math.floor(t / 2) + (dicht ? 110 : 230);
             const cx = mx + Math.trunc(-dy * off * seite / len), cy = my + Math.trunc(dx * off * seite / len);
             const tx = Math.floor(cx / 1000), ty = Math.floor(cy / 1000);
             if (tx < 0 || ty < 0 || tx >= KARTE_B || ty >= KARTE_H) continue;
@@ -165,6 +168,9 @@ function weidePlanen(z, herr, o) {
 }
 
 const HAUS_B = [1000, 1150, 1300], HAUS_T = [1350, 1600, 1850];
+/** Bürgerhäuser nahe dem Markt: größer, mehr Bewohner. */
+const STADTHAUS_B = [1150, 1300, 1450], STADTHAUS_T = [1800, 2000, 2200];
+const STADTKERN = 11000;
 
 /** Bester Platz für eine Gebäudeart in ihrer Zone, oder null. */
 export function findePlatz(z, herr, art, nahe = null) {
@@ -172,15 +178,22 @@ export function findePlatz(z, herr, art, nahe = null) {
   const zone = typ.zone || 0;
   const markt = nahe || z.gebaeude[z.herren[herr].markt] || z.gebaeude[z.herren[herr].burg];
   let best = null, bestWert = Infinity;
-  const b0 = art === 'haus' ? 1300 : typ.b, t0 = art === 'haus' ? 1850 : typ.t;
-  const plaetze = strassenPlaetze(z, b0, t0, zone, (art === 'hof' || art === 'viehhof') ? 2 : typ.braucht ? 2 : 0);
+  const b0 = art === 'haus' ? 1450 : typ.b, t0 = art === 'haus' ? 2200 : typ.t;
+  const plaetze = strassenPlaetze(z, b0, t0, zone, (art === 'hof' || art === 'viehhof') ? 2 : typ.braucht ? 2 : 0, art === 'haus');
+  const platz = z.gebaeude[z.herren[herr].markt];
+  if (art === 'haus' && platz) for (const p of platzRandPlaetze(z, platz, 1300, 2000)) plaetze.unshift(p);
   for (const p of plaetze) {
-    let b = typ.b, t = typ.t;
-    if (art === 'haus') { b = HAUS_B[zufall(z, 3)]; t = HAUS_T[zufall(z, 3)]; }
-    const o = { x: p.x, y: p.y, b, t, w: wnorm(p.w + zufall(z, 9) - 4) };
+    let b = typ.b, t = typ.t, wohn = 0;
+    if (art === 'haus') {
+      const kern = abstand(p.x, p.y, markt.x, markt.y) < STADTKERN;
+      const i = zufall(z, 3), j = zufall(z, 3);
+      b = kern ? STADTHAUS_B[i] : HAUS_B[i]; t = kern ? STADTHAUS_T[j] : HAUS_T[j];
+      wohn = kern ? 8 : 5;
+    }
+    const o = { x: p.x, y: p.y, b, t, w: wnorm(p.w + (art === 'haus' ? zufall(z, 5) - 2 : zufall(z, 9) - 4)) };
     // WARUM nachrücken: Platz wurde für die größte Hausgröße gesucht; kleinere rücken an die Straße.
     if (t < t0) { const q = lokal(o, 0, -Math.floor((t0 - t) / 2)); o.x = q.x; o.y = q.y; }
-    const grund = pruefePlatz(z, herr, o, { zone, zoneMin: art === 'fischer' ? 5 : (art === 'hof' || art === 'viehhof' || typ.braucht) ? 2 : 7, braucht: typ.braucht, amWasser: typ.amWasser, steilMax: art === 'fischer' ? 80 : typ.braucht ? 130 : 45, felsOk: !!typ.braucht });
+    const grund = pruefePlatz(z, herr, o, { zone, zoneMin: art === 'fischer' ? 5 : (art === 'hof' || art === 'viehhof' || typ.braucht) ? 2 : 7, braucht: typ.braucht, amWasser: typ.amWasser, steilMax: art === 'fischer' ? 80 : typ.braucht ? 130 : art === 'haus' ? 60 : 45, felsOk: !!typ.braucht, rand: art === 'haus' ? 60 : 250, strRand: art === 'haus' ? 60 : 120 });
     if (grund) continue;
     let felder = [], wert = abstand(o.x, o.y, markt.x, markt.y);
     if (art === 'hof') {
@@ -200,9 +213,9 @@ export function findePlatz(z, herr, art, nahe = null) {
       }
       wert = wert / 3 - w * 8;
     } else if (art === 'haus') {
-      wert += zufall(z, 1500);
+      wert += zufall(z, 800) - (p.platz ? 6000 : 0);
     }
-    if (wert < bestWert) { bestWert = wert; best = { o, felder }; }
+    if (wert < bestWert) { bestWert = wert; best = { o, felder, wohn }; }
   }
   return best;
 }
@@ -217,6 +230,10 @@ export function gebaeudeAnlegen(z, herr, art, o, opt = {}) {
     belegt: 0, fortschritt: 0, puffer: 0, variante: zufall(z, 4), auftrag: !!opt.auftrag,
     felder: [], aufgabe: 0, aufgabeFeld: -1, traeger: 0, seitLieferung: 0, material: 0, anwerbung: 0, blockiert: '',
   };
+  if (typ.lager) g.inhalt = leer();
+  if (opt.wohn) g.wohn = opt.wohn;
+  if (art === 'schmiede') { g.produkt = 'speere'; g.pufferWaren = { speere: 0, boegen: 0 }; }
+  if (typ.plaetze) g.ausbildung = 'speer';
   z.gebaeude.push(g);
   roden(z, herr, g, 300);
   for (const f of opt.felder || []) {
@@ -241,7 +258,7 @@ function roden(z, herr, o, rand) {
       if (z.wald[i] && (pruefeMitte(o, tx, ty, rand))) { holz += z.wald[i]; z.wald[i] = 0; }
     }
   }
-  if (holz) z.herren[herr].lager.holz += Math.floor(holz / 25);
+  if (holz) geben(z, herr, null, 'holz', Math.floor(holz / 25), o.x, o.y);
 }
 function pruefeMitte(o, tx, ty, rand) {
   const c = COS[o.w], s = SIN[o.w], dx = tx * 1000 + 500 - o.x, dy = ty * 1000 + 500 - o.y;
@@ -254,6 +271,13 @@ export function planeGasse(z, herr, zone) {
   const k = karteFuer(z.seed), c = abgeleitet(z);
   const h = z.herren[herr];
   const burg = z.gebaeude[h.burg], markt = z.gebaeude[h.markt] || burg;
+  if (zone === 1) {
+    // Wohnland: Gasse als T-Abzweig wie ein Lokator (stadtplaner.js)
+    const g = planeWohngasse(z, herr, zone, markt);
+    if (g) { strasseHinzufuegen(z, g.punkte, 'gasse'); return true; }
+    // WARUM kein Ersatzweg: Wohnland soll nicht mit Stichwegen zerstückelt werden.
+    if (zoneVorhandenNah(z, zone, markt)) return false;
+  }
   let ziel = -1, bestWert = Infinity;
   for (let i = 0; i < KARTE_B * KARTE_H; i++) {
     if (z.zone[i] !== zone || k.wasser[i] || c.belegt[i] || c.feld[i] || c.strasse[i] || c.mauer[i]) continue;
@@ -276,13 +300,10 @@ export function planeGasse(z, herr, zone) {
   const pfad = findePfad(z, ziel, -1, 'bau', { zielFn: (i) => c.strasse[i] === 1, max: 30000 });
   if (!pfad) return false;
   pfad.reverse();
-  // Rohpunkte: Weg von der Straße (jede 2. Kachel), dann Verlängerung in die Zone.
-  const roh = [];
-  for (let i = 0; i < pfad.length; i++) {
-    if (i % 2 === 1 && i !== pfad.length - 1) continue;
-    roh.push((pfad[i] % KARTE_B) * 1000 + 500, Math.floor(pfad[i] / KARTE_B) * 1000 + 500);
-  }
-  let cx = roh[roh.length - 2], cy = roh[roh.length - 1];
+  // Zufahrt von der Straße, dann gerade Verlängerung in die Zone; am Ende begradigen.
+  const ext = [];
+  const letzte = pfad[pfad.length - 1];
+  let cx = (letzte % KARTE_B) * 1000 + 500, cy = Math.floor(letzte / KARTE_B) * 1000 + 500;
   let dir;
   if (pfad.length >= 3) { const a = pfad[Math.max(0, pfad.length - 4)]; dir = winkelVon(cx - ((a % KARTE_B) * 1000 + 500), cy - (Math.floor(a / KARTE_B) * 1000 + 500)); }
   else dir = winkelVon(cx - markt.x, cy - markt.y);
@@ -290,7 +311,7 @@ export function planeGasse(z, herr, zone) {
   const maxVerl = [0, 9, 1, 1, 3, 2][zone];
   for (let s = 0; s < maxVerl; s++) {
     let ok = false;
-    for (const dw of [0, -18, 18, -36, 36, -60, 60]) {
+    for (const dw of [0, -15, 15, -30, 30]) {
       const w = wnorm(dir + dw);
       const nx = cx + Math.trunc(COS[w] * 2000 / 1024), ny = cy + Math.trunc(SIN[w] * 2000 / 1024);
       const tx = Math.floor(nx / 1000), ty = Math.floor(ny / 1000);
@@ -304,11 +325,11 @@ export function planeGasse(z, herr, zone) {
       cx = nx; cy = ny; dir = w; ok = true; break;
     }
     if (!ok) break;
-    roh.push(cx, cy); verl++;
+    ext.push(kachel(cx, cy)); verl++;
   }
   if (pfad.length + verl * 2 < 5) return false;
   const imZone = pfad.filter((i) => z.zone[i] === zone).length;
-  strasseHinzufuegen(z, glaetten(roh), imZone * 2 >= pfad.length ? 'gasse' : 'weg');
+  strasseHinzufuegen(z, begradigen(z, pfad.concat(ext), null, null), imZone * 2 >= pfad.length ? 'gasse' : 'weg');
   return true;
 }
 
@@ -321,7 +342,7 @@ export function stadtStatus(z, herr) {
     const typ = GEBAEUDE[g.art];
     if (g.zustand === 'fertig') {
       st.anzahl[g.art] = (st.anzahl[g.art] || 0) + 1;
-      if (typ.wohnplaetze) { st.wohnKap += typ.wohnplaetze; st.haeuser++; }
+      if (typ.wohnplaetze) { st.wohnKap += g.wohn || typ.wohnplaetze; st.haeuser++; }
       if (typ.arbeiter) st.arbeiterBedarf += typ.arbeiter;
       if (typ.plaetze) st.plaetze += typ.plaetze;
       if (g.art === 'hof') st.nahrungProTag += Math.floor(g.felder.length * FELD.ertrag * 11 / 10 / 20);
@@ -331,7 +352,7 @@ export function stadtStatus(z, herr) {
       if (typ.mauer) st.mauern++;
     } else {
       st.anzahlBau[g.art] = (st.anzahlBau[g.art] || 0) + 1;
-      if (typ.wohnplaetze) { st.wohnKapBau += typ.wohnplaetze; st.hausBau++; }
+      if (typ.wohnplaetze) { st.wohnKapBau += g.wohn || typ.wohnplaetze; st.hausBau++; }
       if (typ.arbeiter) st.arbeiterReserviert += typ.arbeiter;
     }
   }
@@ -339,6 +360,13 @@ export function stadtStatus(z, herr) {
   st.verbrauch = h.bewohner + st.soldaten;
   st.wohnFrei = st.wohnKap - h.bewohner;
   return st;
+}
+
+/** Liegt Wohnland in Straßennähe? Dann gilt: lieber keine Gasse als eine schlechte. */
+function zoneVorhandenNah(z, zone) {
+  const c = abgeleitet(z);
+  for (let i = 0; i < z.zone.length; i++) if (z.zone[i] === zone && c.strDist[i] <= 4) return true;
+  return false;
 }
 
 function zoneVorhanden(z, zone) {
@@ -351,9 +379,9 @@ function bezahlbar(h, art) {
   for (const w in kosten) if ((h.lager[w] || 0) < kosten[w]) return false;
   return true;
 }
-export function bezahlen(h, art) {
+export function bezahlen(z, herr, art, x, y) {
   const kosten = GEBAEUDE[art].kosten || {};
-  for (const w in kosten) h.lager[w] -= kosten[w];
+  for (const w in kosten) nehmen(z, herr, w, kosten[w], x, y);
 }
 
 function log(z, herr, text) {
@@ -382,8 +410,8 @@ function versuche(z, herr, art, nahe = null) {
     meldung(z, herr, `Baumeister: Kein Platz mehr für ${typ.name} im ${ZONEN[typ.zone || 1].name} – schreib mehr Land aus.`, 'warn', 'platz' + art, 4000);
     return false;
   }
-  if (!notbau) bezahlen(h, art);
-  gebaeudeAnlegen(z, herr, art, p.o, { felder: p.felder });
+  if (!notbau) bezahlen(z, herr, art, p.o.x, p.o.y);
+  gebaeudeAnlegen(z, herr, art, p.o, { felder: p.felder, wohn: p.wohn });
   log(z, herr, `plant ${typ.name}`);
   return true;
 }

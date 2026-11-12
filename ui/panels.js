@@ -6,14 +6,14 @@
  * SCHREIBT: nur das ui-Objekt (Werkzeug, Auswahl) und das DOM
  */
 
-import { GEBAEUDE, ZONEN, WARENNAME } from '../data/gebaeude.js';
+import { GEBAEUDE, ZONEN, WARENNAME, WAREN, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
 import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME } from '../data/werte.js';
 import { stadtStatus } from '../sim/baumeister.js';
 import { tageBisErnte } from '../sim/wirtschaft.js';
 import { datum } from '../sim/lib.js';
 
 const $ = (id) => document.getElementById(id);
-const SYMBOL = { nahrung: '🌾', holz: '🪵', stein: '🪨', eisen: '⛓️', waffen: '⚔️', gold: '🪙' };
+const SYMBOL = { nahrung: '🌾', holz: '🪵', stein: '🪨', eisen: '⛓️', speere: '🔱', boegen: '🏹', gold: '🪙' };
 const ZONEN_TEXT = [
   'Hebt die Ausschreibung auf (Gebautes bleibt stehen).',
   'Häuser für Zuzügler; am Wasser auch Fischerhütten.',
@@ -95,8 +95,19 @@ export function erzeugePanels(verbindung, ui, aktionen) {
   $('info').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.abriss) { verbindung().senden({ typ: 'abreissen', id: Number(b.dataset.abriss) }); ui.auswahl = -1; }
-    if (b.dataset.zu) ui.auswahl = -1;
+    if (b.dataset.zu) { ui.auswahl = -1; ui.einheiten.clear(); }
+    if (b.dataset.frei) verbindung().senden({ typ: 'einheiten', ids: [...ui.einheiten], aktion: 'frei' });
+    if (b.dataset.produkt) verbindung().senden({ typ: 'produktion', id: ui.auswahl, produkt: b.dataset.produkt });
+    if (b.dataset.ausbildung) verbindung().senden({ typ: 'ausbildung', id: ui.auswahl, art: b.dataset.ausbildung });
+    if (b.dataset.transfer) {
+      const g = z().gebaeude[ui.auswahl], ware = $('trWare').value;
+      verbindung().senden({ typ: 'transfer', von: ui.auswahl, nach: Number($('trNach').value), ware, menge: b.dataset.transfer === 'alle' ? (g.inhalt[ware] || 0) : Number(b.dataset.transfer) });
+    }
     aktualisiere(true);
+  });
+  $('info').addEventListener('change', (e) => {
+    if (e.target.id === 'trNach') ui.trNach = e.target.value;
+    if (e.target.id === 'trWare') ui.trWare = e.target.value;
   });
 
   let letzteMeldung = z().ereignisNr;
@@ -125,7 +136,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     return `<div class="bed" title="${text}"><div class="kopf"><span>${name}</span><span>${wert}</span></div><div class="balken"><i style="width:${wert}%;background:${farbe}"></i></div></div>`;
   }
 
-  let zuletzt = '';
+  let zuletzt = '', chronikZuletzt = '';
   function aktualisiere(sofort = false) {
     meldungen();
     const zz = z(), herr = verbindung().spieler, h = zz.herren[herr];
@@ -176,7 +187,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
       <div class="zeile"><span class="w">Verbrauch pro Tag</span><span>${verbrauch} 🌾</span></div>
       <div class="zeile"><span class="w">Vorrat reicht</span><span style="color:${reicht < tbe ? 'var(--schlecht)' : 'var(--gut)'}">≈ ${reicht} Tage</span></div>
       <div class="zeile"><span class="w">Nächste Ernte in</span><span>${tbe} Tagen</span></div>
-      <div class="zeile"><span class="w">Gestern geliefert</span><span>${h.gestern.nahrung || 0}🌾 ${h.gestern.holz || 0}🪵 ${h.gestern.stein || 0}🪨 ${h.gestern.eisen || 0}⛓️ ${h.gestern.waffen || 0}⚔️</span></div>
+      <div class="zeile"><span class="w">Gestern geliefert</span><span>${h.gestern.nahrung || 0}🌾 ${h.gestern.holz || 0}🪵 ${h.gestern.stein || 0}🪨 ${h.gestern.eisen || 0}⛓️ ${h.gestern.speere || 0}🔱 ${h.gestern.boegen || 0}🏹</span></div>
       <div class="zeile"><span class="w">Steuer / Sold gestern</span><span>+${h.gestern.steuer || 0} / −${h.gestern.sold || 0} 🪙</span></div>
       <h3>Stadt</h3>
       <div class="zeile"><span class="w">Häuser · Wohnplätze</span><span>${st.haeuser} · ${st.wohnKap} (${st.wohnFrei >= 0 ? st.wohnFrei + ' frei' : -st.wohnFrei + ' ohne Dach'})</span></div>
@@ -190,37 +201,92 @@ export function erzeugePanels(verbindung, ui, aktionen) {
       <h3>Baumeister</h3>
       <div class="log">${h.planLog.slice().reverse().map((t) => `<div>${t}</div>`).join('') || '<div>…</div>'}</div>`;
     if (sofort || html !== zuletzt) { $('seite-stadt').innerHTML = html; zuletzt = html; }
-    $('seite-chronik').innerHTML = `<div class="chronik">${chronik.map((c) => `<div class="${c.art}"><span class="klein">T${c.tag}</span> ${c.text}</div>`).join('')}</div>`;
+    const chr = `<div class="chronik">${chronik.map((c) => `<div class="${c.art}"><span class="klein">T${c.tag}</span> ${c.text}</div>`).join('')}</div>`;
+    if (chr !== chronikZuletzt) { $('seite-chronik').innerHTML = chr; chronikZuletzt = chr; }
     infoAnzeigen(zz);
+    tippAnzeigen(zz);
   }
 
-  function infoAnzeigen(zz) {
-    const el = $('info');
-    if (ui.auswahl < 0) { el.classList.add('versteckt'); return; }
-    const g = zz.gebaeude[ui.auswahl];
-    if (!g || g.zustand === 'weg') { ui.auswahl = -1; el.classList.add('versteckt'); return; }
-    const typ = GEBAEUDE[g.art];
-    const zeilen = [];
-    if (g.zustand === 'bau') zeilen.push(`Baustelle: ${Math.floor(Math.min(1, g.arbeit / typ.arbeit) * 100)} % · ${g.belegt} Bauleute ${g.belegt ? '' : '(warten auf freie Hände)'}`);
-    else {
-      if (typ.arbeiter) zeilen.push(`Arbeiter: ${g.belegt} / ${typ.arbeiter}${g.blockiert ? ' · ' + g.blockiert : ''}`);
-      if (typ.ware) zeilen.push(`Erzeugt ${WARENNAME[typ.ware]} · am Gebäude: ${g.puffer} · Träger unterwegs: ${g.traeger}`);
-      if (typ.wohnplaetze) zeilen.push(`Wohnplätze: ${typ.wohnplaetze}`);
-      if (typ.plaetze) {
-        const n = zz.einheiten.filter((u) => u.art === 'soldat' && u.heim === g.id).length;
-        zeilen.push(`Soldaten: ${n} / ${typ.plaetze}${g.anwerbung ? ' · Rekrut in Ausbildung' : ''}`);
-      }
-      if (g.art === 'hof') {
-        const ph = { brach: 'brach', wachsend: 'wächst', reif: 'reif' };
-        zeilen.push('Felder: ' + g.felder.map((id) => { const f = zz.felder[id]; return f.weg ? '—' : ph[f.phase] + (f.phase === 'wachsend' ? ` ${Math.floor(f.stand / 50)}%` : ''); }).join(', '));
-      }
-      zeilen.push(`Zustand: ${g.hp} / ${g.hpMax}`);
-    }
-    const abriss = g.art !== 'burg' && g.art !== 'platz';
-    el.innerHTML = `<h3>${g.art === 'platz' ? 'Marktplatz von ' + STADTNAME : typ.name}</h3>${zeilen.map((t) => `<div class="klein">${t}</div>`).join('')}
-      <div class="knoepfe">${abriss ? `<button data-abriss="${g.id}">Abreißen</button>` : ''}<button data-zu="1">Schließen</button></div>`;
+  function inhaltTabelle(g) {
+    return `<div class="inhalt">${WAREN.map((w) => `<span title="${WARENNAME[w]}">${SYMBOL[w]} ${g.inhalt[w] || 0}</span>`).join('')}</div>`;
+  }
+
+  /** Kleines Fenster beim Überfahren eines Lagers: was liegt drin? */
+  function tippAnzeigen(zz) {
+    const el = $('tipp');
+    const g = ui.unterMaus >= 0 ? zz.gebaeude[ui.unterMaus] : null;
+    if (!g || g.zustand !== 'fertig' || !GEBAEUDE[g.art].lager || !ui.mausSchirm || ui.werkzeug) { el.classList.add('versteckt'); return; }
+    const unterwegs = zz.lieferungen.filter((l) => l.nach === g.id && !l.angekommen).reduce((s, l) => s + l.menge, 0);
+    el.innerHTML = `<b>${GEBAEUDE[g.art].name}</b>${inhaltTabelle(g)}${unterwegs ? `<div class="klein">${unterwegs} unterwegs hierher</div>` : ''}`;
+    el.style.left = (ui.mausSchirm.x + 16) + 'px'; el.style.top = (ui.mausSchirm.y + 12) + 'px';
     el.classList.remove('versteckt');
   }
 
-  return { aktualisiere };
+  let infoZuletzt = '';
+  function infoAnzeigen(zz) {
+    const el = $('info');
+    let html = '';
+    const herr = verbindung().spieler;
+    // Ausgewählte Soldaten
+    for (const id of [...ui.einheiten]) if (!zz.einheiten.some((u) => u.id === id)) ui.einheiten.delete(id);
+    if (ui.einheiten.size) {
+      const sel = zz.einheiten.filter((u) => ui.einheiten.has(u.id));
+      const speer = sel.filter((u) => u.typ !== 'bogen').length, bogen = sel.length - speer;
+      const verletzt = sel.filter((u) => u.hp < u.hpMax).length;
+      const frei = sel.filter((u) => !u.befehl).length;
+      html = `<h3>${sel.length} Soldaten ausgewählt</h3>
+        <div class="klein">${speer} Speerträger · ${bogen} Bogenschützen · ${verletzt} verletzt · ${frei} auf eigene Faust</div>
+        <div class="klein">Rechtsklick auf Boden = marschieren und halten · auf Räuber = angreifen · G = alle · F = auf eigene Faust</div>
+        <div class="knoepfe"><button data-frei="1" title="Soldaten verteidigen wieder selbstständig und kehren zum Posten zurück">Auf eigene Faust (F)</button><button data-zu="1">Abwählen</button></div>`;
+    } else if (ui.auswahl >= 0) {
+      const g = zz.gebaeude[ui.auswahl];
+      if (!g || g.zustand === 'weg') { ui.auswahl = -1; }
+      else {
+        const typ = GEBAEUDE[g.art];
+        const zeilen = [];
+        let extra = '';
+        if (g.zustand === 'bau') zeilen.push(`Baustelle: ${Math.floor(Math.min(1, g.arbeit / typ.arbeit) * 100)} % · ${g.belegt} Bauleute ${g.belegt ? '' : '(warten auf freie Hände)'}`);
+        else {
+          if (typ.arbeiter) zeilen.push(`Arbeiter: ${g.belegt} / ${typ.arbeiter}${g.blockiert ? ' · ' + g.blockiert : ''}`);
+          if (typ.ware && g.art !== 'schmiede') zeilen.push(`Erzeugt ${WARENNAME[typ.ware]} · am Gebäude: ${g.puffer} · Träger unterwegs: ${g.traeger}`);
+          if (typ.wohnplaetze) zeilen.push(`${g.wohn === 8 ? 'Bürgerhaus' : 'Wohnhaus'} · Wohnplätze: ${g.wohn || typ.wohnplaetze}`);
+          if (g.art === 'schmiede') {
+            const p = g.pufferWaren || {};
+            zeilen.push(`Am Gebäude: ${p.speere || 0} Speere, ${p.boegen || 0} Bögen`);
+            extra += `<div class="wahl">Herstellen: ${Object.entries(SCHMIEDE_PRODUKTE).map(([k, v]) => `<button data-produkt="${k}" class="${g.produkt === k ? 'an' : ''}" title="je Stück ${Object.entries(v.material).map(([w, n]) => n + ' ' + WARENNAME[w]).join(' + ')}">${v.name}</button>`).join('')}</div>`;
+          }
+          if (typ.plaetze) {
+            const n = zz.einheiten.filter((u) => u.art === 'soldat' && u.heim === g.id).length;
+            zeilen.push(`Soldaten: ${n} / ${typ.plaetze}${g.anwerbung ? ' · Rekrut in Ausbildung (' + Math.floor(g.anwerbung / 3) + ' %)' : ''}`);
+            extra += `<div class="wahl">Ausbilden: ${Object.entries(AUSBILDUNG).map(([k, v]) => `<button data-ausbildung="${k}" class="${(g.ausbildung || 'speer') === k ? 'an' : ''}" title="braucht ${WARENNAME[v.waffe]}">${v.name}</button>`).join('')}<button data-ausbildung="aus" class="${g.ausbildung === 'aus' ? 'an' : ''}">niemanden</button></div>`;
+          }
+          if (g.art === 'hof') {
+            const ph = { brach: 'brach', wachsend: 'wächst', reif: 'reif' };
+            zeilen.push('Felder: ' + g.felder.map((id) => { const f = zz.felder[id]; return f.weg ? '—' : ph[f.phase] + (f.phase === 'wachsend' ? ` ${Math.floor(f.stand / 50)}%` : ''); }).join(', '));
+          }
+          if (typ.lager) {
+            extra += inhaltTabelle(g);
+            const andere = zz.gebaeude.filter((x) => x.id !== g.id && x.besitzer === herr && x.zustand === 'fertig' && GEBAEUDE[x.art].lager);
+            if (andere.length) {
+              extra += `<div class="wahl transfer">Umlagern nach <select id="trNach">${andere.map((x) => `<option value="${x.id}" ${String(x.id) === ui.trNach ? 'selected' : ''}>${GEBAEUDE[x.art].name} (${Math.round(Math.hypot(x.x - g.x, x.y - g.y) / 1000)} Kacheln)</option>`).join('')}</select>
+                <select id="trWare">${WAREN.map((w) => `<option value="${w}" ${w === ui.trWare ? 'selected' : ''}>${WARENNAME[w]} (${g.inhalt[w] || 0})</option>`).join('')}</select>
+                <button data-transfer="10">10</button><button data-transfer="50">50</button><button data-transfer="alle">alle</button></div>`;
+            }
+          }
+          zeilen.push(`Zustand: ${g.hp} / ${g.hpMax}`);
+        }
+        const abriss = !['burg', 'platz', 'rathaus', 'kirche'].includes(g.art);
+        html = `<h3>${g.art === 'platz' ? 'Marktplatz von ' + STADTNAME : typ.name}</h3>${zeilen.map((t) => `<div class="klein">${t}</div>`).join('')}${extra}
+          <div class="knoepfe">${abriss ? `<button data-abriss="${g.id}">Abreißen</button>` : ''}<button data-zu="1">Schließen</button></div>`;
+      }
+    }
+    if (!html) { el.classList.add('versteckt'); infoZuletzt = ''; return; }
+    // WARUM vergleichen: nicht neu aufbauen, solange der Spieler ein Auswahlfeld offen hat
+    if (html !== infoZuletzt && !(document.activeElement && document.activeElement.tagName === 'SELECT' && el.contains(document.activeElement))) {
+      el.innerHTML = html; infoZuletzt = html;
+    }
+    el.classList.remove('versteckt');
+  }
+
+  return { aktualisiere, tipp: () => tippAnzeigen(z()) };
 }

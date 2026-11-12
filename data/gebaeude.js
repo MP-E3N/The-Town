@@ -9,8 +9,8 @@
  */
 
 export const GEBAEUDE = {
-  burg: { name: 'Burg Eschenbrück', b: 7000, t: 7000, hp: 3000, plaetze: 5, schiesst: 'burg' },
-  platz: { name: 'Marktplatz', b: 4200, t: 4200, begehbar: true },
+  burg: { name: 'Burg Eschenbrück', b: 7000, t: 7000, hp: 3000, plaetze: 5, schiesst: 'burg', lager: true },
+  platz: { name: 'Marktplatz', b: 7600, t: 4600, begehbar: true },
   speicher: { name: 'Speicher', b: 2200, t: 2800, kosten: { holz: 30 }, arbeit: 900, hp: 400, lager: true },
   haus: { name: 'Wohnhaus', b: 1150, t: 1600, kosten: { holz: 8 }, arbeit: 450, hp: 150, wohnplaetze: 5, zone: 1 },
   hof: { name: 'Bauernhof', b: 1800, t: 2100, kosten: { holz: 14 }, arbeit: 600, hp: 220, arbeiter: 2, zone: 2, ware: 'nahrung', gruppe: 0 },
@@ -20,11 +20,13 @@ export const GEBAEUDE = {
   steinbruch: { name: 'Steinbruch', b: 1500, t: 1500, kosten: { holz: 10 }, arbeit: 400, hp: 160, arbeiter: 2, zone: 5, ware: 'stein', ticksProEinheit: 300, gruppe: 3, braucht: 'fels' },
   erzgrube: { name: 'Erzgrube', b: 1500, t: 1600, kosten: { holz: 14 }, arbeit: 500, hp: 180, arbeiter: 2, zone: 5, ware: 'eisen', ticksProEinheit: 600, gruppe: 4, braucht: 'erz' },
   // Aufträge des Herrn
-  schmiede: { name: 'Waffenschmiede', b: 1600, t: 1900, kosten: { holz: 15, stein: 10 }, arbeit: 700, hp: 250, arbeiter: 2, ware: 'waffen', ticksProEinheit: 600, gruppe: 5, auftrag: true, braucht_lager: { holz: 1, eisen: 1 } },
+  schmiede: { name: 'Waffenschmiede', b: 1600, t: 1900, kosten: { holz: 15, stein: 10 }, arbeit: 700, hp: 250, arbeiter: 2, ware: 'speere', ticksProEinheit: 600, gruppe: 5, auftrag: true },
   kaserne: { name: 'Kaserne', b: 2800, t: 3400, kosten: { holz: 30, stein: 20, gold: 40 }, arbeit: 1400, hp: 600, plaetze: 10, auftrag: true },
   turm: { name: 'Wachturm', b: 1300, t: 1300, kosten: { holz: 10, stein: 15 }, arbeit: 700, hp: 500, schiesst: 'turm', auftrag: true },
   palisade: { name: 'Palisade', b: 1500, t: 500, kosten: { holz: 3 }, arbeit: 120, hp: 200, mauer: true, auftrag: true },
   mauer: { name: 'Steinmauer', b: 1500, t: 640, kosten: { stein: 4 }, arbeit: 220, hp: 600, mauer: true, auftrag: true },
+  rathaus: { name: 'Rathaus', b: 2600, t: 2000, hp: 800 },
+  kirche: { name: 'Kirche St. Ilmar', b: 2000, t: 4200, hp: 1000 },
   tor: { name: 'Tor', b: 1500, t: 700, kosten: { holz: 4 }, arbeit: 200, hp: 450, mauer: true, tor: true },
 };
 
@@ -38,5 +40,17 @@ export const ZONEN = [
   { name: 'Bergbau', farbe: [170, 150, 140] },
 ];
 
-export const WAREN = ['nahrung', 'holz', 'stein', 'eisen', 'waffen', 'gold'];
-export const WARENNAME = { nahrung: 'Nahrung', holz: 'Holz', stein: 'Stein', eisen: 'Eisen', waffen: 'Waffen', gold: 'Gold' };
+export const WAREN = ['nahrung', 'holz', 'stein', 'eisen', 'speere', 'boegen', 'gold'];
+export const WARENNAME = { nahrung: 'Nahrung', holz: 'Holz', stein: 'Stein', eisen: 'Eisen', speere: 'Speere', boegen: 'Bögen', gold: 'Gold' };
+
+/** Was die Waffenschmiede herstellen kann (Material je Stück). */
+export const SCHMIEDE_PRODUKTE = {
+  speere: { name: 'Speere', material: { holz: 1, eisen: 1 } },
+  boegen: { name: 'Bögen', material: { holz: 2 } },
+};
+
+/** Wen Burg und Kaserne ausbilden können. */
+export const AUSBILDUNG = {
+  speer: { name: 'Speerträger', waffe: 'speere' },
+  bogen: { name: 'Bogenschützen', waffe: 'boegen' },
+};

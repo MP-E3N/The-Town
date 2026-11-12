@@ -21,14 +21,15 @@ const seed = Number(param.get('seed')) || (Math.floor(Math.random() * 90000) + 1
 const zustand = erzeugeZustand(seed);
 const verbindung = lokaleVerbindung(zustand);
 const kamera = neueKamera();
-const ui = { werkzeug: null, pinsel: 3, maus: null, mausSchirm: null, geist: null, mauerStart: null, auswahl: -1, unterMaus: -1, zonenZeigen: false, drehung: 0 };
+const ui = { einheiten: new Set(), rahmen: null, befehlsZiel: null, trNach: '', trWare: 'nahrung', werkzeug: null, pinsel: 3, maus: null, mausSchirm: null, geist: null, mauerStart: null, auswahl: -1, unterMaus: -1, zonenZeigen: false, drehung: 0 };
 let letztesTempo = 1;
 
 const canvas = document.getElementById('welt');
 const szene = erzeugeSzene(canvas, zustand);
 
 function groesse() {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  // WARUM 1,5: doppelte Auflösung kostet 4× Pixel; ab 1,5 sieht man kaum Unterschied.
+  const dpr = Math.min(1.5, window.devicePixelRatio || 1);
   canvas.width = Math.round(innerWidth * dpr); canvas.height = Math.round(innerHeight * dpr);
   kamera.b = innerWidth; kamera.h = innerHeight;
 }
@@ -53,7 +54,7 @@ function zurBurg() {
 }
 
 const panels = erzeugePanels(() => verbindung, ui, { setzeTempo, werkzeug });
-const eingabe = verbindeEingabe(canvas, { verbindung: () => verbindung, kamera, ui, setzeTempo, werkzeug, zurBurg, letztesTempo: () => letztesTempo });
+const eingabe = verbindeEingabe(canvas, { verbindung: () => verbindung, kamera, ui, setzeTempo, werkzeug, zurBurg, letztesTempo: () => letztesTempo, szeneZeit: () => szene.zeit, auswahlGeaendert: () => panels.aktualisiere(true) });
 
 document.getElementById('start').addEventListener('click', () => {
   document.getElementById('intro').classList.add('versteckt');
@@ -95,6 +96,7 @@ function zeichneBild(jetzt) {
   const dtSpiel = verbindung.pause || zustand.ergebnis ? 0 : dt / 1000 * verbindung.tempo;
   zeichneSzene(szene, zustand, kamera, ui, alpha, dtSpiel, dt / 1000);
   if (jetzt - letztePanels > 250) { panels.aktualisiere(); letztePanels = jetzt; }
+  panels.tipp();
   if (zustand.ergebnis && !endeGezeigt) zeigeEnde();
 }
 

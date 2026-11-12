@@ -1,7 +1,9 @@
 /**
- * maus.js — Maus und Tastatur.
+ * maus.js — Maus und Tastatur (Steuerung wie in Echtzeit-Strategiespielen).
  *
- * ZWECK:    Kamera bewegen, Werkzeuge anwenden (Zonen malen, Aufträge setzen, Mauern ziehen).
+ * ZWECK:    Linke Taste: auswählen (Klick) bzw. Rahmen um Soldaten ziehen; mit Werkzeug: anwenden.
+ *           Rechte Taste: Klick = Befehl an ausgewählte Soldaten (Marsch / Angriff) bzw. Werkzeug ab;
+ *           Ziehen = Karte verschieben. Mittlere Taste ziehen = verschieben. Rad = Zoom.
  * SCHREIBT: Kamera, ui-Objekt; Spielzustand nur über verbindung.senden()
  */
 
@@ -15,22 +17,34 @@ export function verbindeEingabe(canvas, a) {
   const { kamera, ui } = a;
   let ziehen = null, malen = false, letzteKachel = -1;
   const tasten = new Set();
+  ui.einheiten = new Set();
 
   const welt = (e) => zuWelt(kamera, e.clientX, e.clientY);
+  const z = () => a.verbindung().zustand;
 
   function gebaeudeUnter(x, y) {
-    const z = a.verbindung().zustand;
     let best = -1;
-    for (const g of z.gebaeude) {
-      if (g.zustand === 'weg' || g.art === 'platz' && best >= 0) continue;
+    for (const g of z().gebaeude) {
+      if (g.zustand === 'weg') continue;
+      if (g.art === 'platz' && best >= 0) continue;
       if (punktIn(g, Math.round(x * 1000), Math.round(y * 1000), 150)) best = g.id;
     }
     return best;
   }
+  function einheitUnter(x, y, art) {
+    let best = null, bd = 0.45 * 0.45;
+    for (const u of z().einheiten) {
+      if (art && u.art !== art) continue;
+      const d = (u.x / 1000 - x) ** 2 + (u.y / 1000 - y) ** 2;
+      if (d < bd) { bd = d; best = u; }
+    }
+    return best;
+  }
+  const eigeneSoldaten = () => z().einheiten.filter((u) => u.art === 'soldat' && u.besitzer === a.verbindung().spieler);
 
   /** Winkel, damit die Front zur nächsten Straße zeigt. */
   function winkelZurStrasse(x, y) {
-    const z = a.verbindung().zustand, c = abgeleitet(z);
+    const c = abgeleitet(z());
     let best = null, bd = 25;
     for (const s of c.segmente) {
       const ax = s.ax / 1000, ay = s.ay / 1000, bx = s.bx / 1000, by = s.by / 1000;
@@ -40,8 +54,7 @@ export function verbindeEingabe(canvas, a) {
       if (d < bd) { bd = d; best = { qx, qy }; }
     }
     if (!best) return 0;
-    const d = Math.atan2(best.qy - y, best.qx - x) * 180 / Math.PI;
-    return Math.round(d + 90);
+    return Math.round(Math.atan2(best.qy - y, best.qx - x) * 180 / Math.PI + 90);
   }
 
   function geistAktualisieren() {
@@ -49,8 +62,7 @@ export function verbindeEingabe(canvas, a) {
     if (!w || w.typ !== 'bauen' || !ui.maus) { ui.geist = null; return; }
     const typ = GEBAEUDE[w.art];
     const o = { x: Math.round(ui.maus.x * 1000), y: Math.round(ui.maus.y * 1000), b: typ.b, t: typ.t, w: wnorm(winkelZurStrasse(ui.maus.x, ui.maus.y) + ui.drehung) };
-    const grund = auftragPruefen(a.verbindung().zustand, a.verbindung().spieler, w.art, o);
-    ui.geist = { ...o, grund };
+    ui.geist = { ...o, grund: auftragPruefen(z(), a.verbindung().spieler, w.art, o) };
   }
 
   function malenBei(p) {
@@ -60,20 +72,27 @@ export function verbindeEingabe(canvas, a) {
     a.verbindung().senden({ typ: 'zone', zone: ui.werkzeug.zone, x: Math.floor(p.x * 1000), y: Math.floor(p.y * 1000), r: ui.pinsel });
   }
 
+  function befehlAnAuswahl(p) {
+    const ids = [...ui.einheiten].filter((id) => z().einheiten.some((u) => u.id === id));
+    if (!ids.length) return false;
+    const feind = einheitUnter(p.x, p.y, 'raeuber');
+    if (feind) a.verbindung().senden({ typ: 'einheiten', ids, aktion: 'angriff', ziel: feind.id });
+    else a.verbindung().senden({ typ: 'einheiten', ids, aktion: 'gehe', x: Math.round(p.x * 1000), y: Math.round(p.y * 1000) });
+    ui.befehlsZiel = { x: p.x, y: p.y, t: a.szeneZeit(), angriff: !!feind };
+    return true;
+  }
+
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('mousedown', (e) => {
     const p = welt(e);
     ui.maus = p;
     const w = ui.werkzeug;
-    if (e.button === 1 || (e.button === 0 && !w) || (e.button === 2 && !w)) {
-      ziehen = { sx: e.clientX, sy: e.clientY, kx: kamera.x, ky: kamera.y, bewegt: false, knopf: e.button };
-      canvas.classList.add('ziehen');
+    if (e.button === 1 || e.button === 2) {
+      ziehen = { art: 'schieben', sx: e.clientX, sy: e.clientY, kx: kamera.x, ky: kamera.y, bewegt: false, knopf: e.button };
       return;
     }
-    if (e.button === 2) {
-      if (w.typ === 'mauer' && ui.mauerStart) ui.mauerStart = null;
-      else if (w.typ === 'sammeln') { a.verbindung().senden({ typ: 'sammeln' }); a.werkzeug(null); }
-      else a.werkzeug(null);
+    if (!w) {
+      ziehen = { art: 'rahmen', sx: e.clientX, sy: e.clientY, ax: p.x, ay: p.y, bewegt: false, shift: e.shiftKey };
       return;
     }
     const v = a.verbindung();
@@ -102,9 +121,12 @@ export function verbindeEingabe(canvas, a) {
     ui.mausSchirm = { x: e.clientX, y: e.clientY };
     if (ziehen) {
       const dx = e.clientX - ziehen.sx, dy = e.clientY - ziehen.sy;
-      if (Math.abs(dx) + Math.abs(dy) > 4) ziehen.bewegt = true;
-      kamera.x = ziehen.kx - dx / kamera.zoom; kamera.y = ziehen.ky - dy / kamera.zoom;
-      begrenze(kamera);
+      if (Math.abs(dx) + Math.abs(dy) > 5) ziehen.bewegt = true;
+      if (ziehen.art === 'schieben') {
+        kamera.x = ziehen.kx - dx / kamera.zoom; kamera.y = ziehen.ky - dy / kamera.zoom;
+        begrenze(kamera);
+        if (ziehen.bewegt) canvas.classList.add('ziehen');
+      } else if (ziehen.bewegt) ui.rahmen = { ax: ziehen.ax, ay: ziehen.ay, bx: p.x, by: p.y };
       return;
     }
     if (malen && ui.werkzeug && ui.werkzeug.typ === 'zone') malenBei(p);
@@ -112,14 +134,49 @@ export function verbindeEingabe(canvas, a) {
     ui.unterMaus = gebaeudeUnter(p.x, p.y);
   });
   addEventListener('mouseup', (e) => {
-    if (ziehen) {
-      if (!ziehen.bewegt && ziehen.knopf === 0) {
-        const p = welt(e);
-        ui.auswahl = gebaeudeUnter(p.x, p.y);
-      }
-      ziehen = null; canvas.classList.remove('ziehen');
-    }
     malen = false;
+    if (!ziehen) return;
+    const p = welt(e);
+    if (ziehen.art === 'schieben') {
+      if (!ziehen.bewegt && ziehen.knopf === 2) {
+        // Rechtsklick: Befehl an Soldaten, sonst Werkzeug/Mauerkette beenden
+        const w = ui.werkzeug;
+        if (w && w.typ === 'mauer' && ui.mauerStart) ui.mauerStart = null;
+        else if (w && w.typ === 'sammeln') { a.verbindung().senden({ typ: 'sammeln' }); a.werkzeug(null); }
+        else if (w) a.werkzeug(null);
+        else befehlAnAuswahl(p);
+      }
+      canvas.classList.remove('ziehen');
+    } else if (ziehen.art === 'rahmen') {
+      if (ziehen.bewegt) {
+        const x0 = Math.min(ziehen.ax, p.x), x1 = Math.max(ziehen.ax, p.x), y0 = Math.min(ziehen.ay, p.y), y1 = Math.max(ziehen.ay, p.y);
+        if (!ziehen.shift) ui.einheiten.clear();
+        for (const u of eigeneSoldaten()) if (u.x / 1000 >= x0 && u.x / 1000 <= x1 && u.y / 1000 >= y0 && u.y / 1000 <= y1) ui.einheiten.add(u.id);
+        if (ui.einheiten.size) ui.auswahl = -1;
+      } else {
+        const u = einheitUnter(p.x, p.y, 'soldat');
+        if (u && u.besitzer === a.verbindung().spieler) {
+          if (!ziehen.shift) ui.einheiten.clear();
+          if (ui.einheiten.has(u.id) && ziehen.shift) ui.einheiten.delete(u.id); else ui.einheiten.add(u.id);
+          ui.auswahl = -1;
+        } else {
+          if (!ziehen.shift) ui.einheiten.clear();
+          ui.auswahl = gebaeudeUnter(p.x, p.y);
+        }
+      }
+      ui.rahmen = null;
+      a.auswahlGeaendert();
+    }
+    ziehen = null;
+  });
+  canvas.addEventListener('dblclick', (e) => {
+    // Doppelklick auf einen Soldaten: alle Soldaten desselben Typs im Bild auswählen
+    const p = welt(e);
+    const u = einheitUnter(p.x, p.y, 'soldat');
+    if (!u) return;
+    const v0 = { x0: kamera.x - kamera.b / 2 / kamera.zoom, x1: kamera.x + kamera.b / 2 / kamera.zoom, y0: kamera.y - kamera.h / 2 / kamera.zoom, y1: kamera.y + kamera.h / 2 / kamera.zoom };
+    for (const s of eigeneSoldaten()) if (s.typ === u.typ && s.x / 1000 > v0.x0 && s.x / 1000 < v0.x1 && s.y / 1000 > v0.y0 && s.y / 1000 < v0.y1) ui.einheiten.add(s.id);
+    a.auswahlGeaendert();
   });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -128,7 +185,7 @@ export function verbindeEingabe(canvas, a) {
   }, { passive: false });
 
   addEventListener('keydown', (e) => {
-    if (e.target instanceof HTMLInputElement) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
     const t = e.key.toLowerCase();
     tasten.add(t);
     if (t === ' ') { e.preventDefault(); a.setzeTempo(a.verbindung().pause ? a.letztesTempo() : 0); }
@@ -138,13 +195,18 @@ export function verbindeEingabe(canvas, a) {
     else if (t === 'q') { ui.drehung -= 15; geistAktualisieren(); }
     else if (t === 'e') { ui.drehung += 15; geistAktualisieren(); }
     else if (t === 'z') ui.zonenZeigen = !ui.zonenZeigen;
-    else if (t === 'escape') { if (ui.mauerStart) ui.mauerStart = null; else { a.werkzeug(null); ui.auswahl = -1; } }
-    else if (t === 'h') a.zurBurg();
+    else if (t === 'g') { ui.einheiten.clear(); for (const u of eigeneSoldaten()) ui.einheiten.add(u.id); ui.auswahl = -1; a.auswahlGeaendert(); }
+    else if (t === 'f' && ui.einheiten.size) a.verbindung().senden({ typ: 'einheiten', ids: [...ui.einheiten], aktion: 'frei' });
+    else if (t === 'escape') {
+      if (ui.mauerStart) ui.mauerStart = null;
+      else if (ui.werkzeug) a.werkzeug(null);
+      else { ui.einheiten.clear(); ui.auswahl = -1; a.auswahlGeaendert(); }
+    } else if (t === 'h') a.zurBurg();
   });
   addEventListener('keyup', (e) => tasten.delete(e.key.toLowerCase()));
 
-  /** Tastatur-Verschieben (jedes Bild). */
   return {
+    /** Tastatur-Verschieben (jedes Bild). */
     schritt(dt) {
       const s = 600 / kamera.zoom * dt;
       if (tasten.has('a') || tasten.has('arrowleft')) kamera.x -= s;

@@ -11,6 +11,7 @@ import { GEBAEUDE } from '../data/gebaeude.js';
 import { abgeleitet } from './abgeleitet.js';
 import { findePfad } from './pfad.js';
 import { kachel, abstandStrecke } from './lib.js';
+import { begradigen } from './stadtplaner.js';
 
 export const BREITE = { haupt: 950, gasse: 700, weg: 560 };
 
@@ -77,5 +78,5 @@ export function anbinden(z, g, tuerPunkt) {
   const pfad = findePfad(z, t, -1, 'bau', { zielFn: (i) => c.strasse[i] === 1, max: 20000, erlaubt: new Set([g.id]) });
   if (!pfad || pfad.length < 2) return;
   pfad.reverse();
-  strasseHinzufuegen(z, punkteAusPfad(pfad, null, tuerPunkt), 'weg');
+  strasseHinzufuegen(z, begradigen(z, pfad, null, tuerPunkt), 'weg');
 }

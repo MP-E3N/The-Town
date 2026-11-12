@@ -285,21 +285,122 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
       break;
     }
     case 'platz': {
-      const cx = w / 2, cy = h / 2, rr = Math.min(w, h) / 2 - 2;
-      ctx.save(); ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr * 0.92, 0.3, 0, 7); ctx.clip();
-      ctx.fillStyle = '#a49a88'; ctx.fillRect(0, 0, w, h);
-      for (let i = 0; i < w * h / 14; i++) { ctx.fillStyle = css(hell([168, 160, 146], 0.82 + r() * 0.3)); ctx.beginPath(); ctx.arc(r() * w, r() * h, 1.6 + r() * 1.4, 0, 7); ctx.fill(); }
+      // Straßenmarkt: länglicher, gepflasterter Platz entlang der Handelsstraße (u-Achse = Bildbreite)
+      const rnd2 = rnd(4711);
+      const rx = Math.min(w, h) * 0.22;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(rx, 3); ctx.lineTo(w - rx, 3);
+      ctx.quadraticCurveTo(w - 3, 3, w - 3, rx); ctx.lineTo(w - 3, h * 0.36); ctx.lineTo(w - 1, h * 0.5); ctx.lineTo(w - 3, h * 0.64);
+      ctx.lineTo(w - 3, h - rx); ctx.quadraticCurveTo(w - 3, h - 3, w - rx, h - 3); ctx.lineTo(rx, h - 3);
+      ctx.quadraticCurveTo(3, h - 3, 3, h - rx); ctx.lineTo(3, h * 0.64); ctx.lineTo(1, h * 0.5); ctx.lineTo(3, h * 0.36); ctx.lineTo(3, rx);
+      ctx.quadraticCurveTo(3, 3, rx, 3); ctx.closePath();
+      ctx.fillStyle = '#7a705e'; ctx.fill();
+      ctx.clip();
+      ctx.fillStyle = '#a39a86'; ctx.fillRect(0, 0, w, h);
+      // Kopfsteinpflaster in versetzten Reihen
+      const st = 5.2;
+      for (let y = 0, r = 0; y < h + st; y += st * 0.82, r++) {
+        for (let x = (r % 2) * st / 2; x < w + st; x += st) {
+          const f = 0.78 + rnd2() * 0.38;
+          ctx.fillStyle = css(hell([170, 160, 140], f));
+          ctx.beginPath(); ctx.ellipse(x + (rnd2() - 0.5), y + (rnd2() - 0.5), st * 0.44, st * 0.36, rnd2() * 3, 0, 7); ctx.fill();
+        }
+      }
+      // ausgefahrene Mitte (Handelsweg) und Rinne
+      ctx.fillStyle = 'rgba(120,96,64,0.22)'; ctx.fillRect(0, h * 0.42, w, h * 0.16);
+      ctx.strokeStyle = 'rgba(70,60,50,0.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, h * 0.5); ctx.lineTo(w, h * 0.5); ctx.stroke();
       ctx.restore();
-      ctx.fillStyle = '#5a5a5a'; ctx.beginPath(); ctx.arc(cx, cy, w * 0.06, 0, 7); ctx.fill();
-      ctx.fillStyle = '#3a6080'; ctx.beginPath(); ctx.arc(cx, cy, w * 0.04, 0, 7); ctx.fill();
-      const markise = ['#b03a30', '#d8c060', '#3a6aa0', '#5a8a3a', '#d07030', '#e8e0c8'];
-      for (let i = 0; i < 7; i++) {
-        const a = i / 7 * 6.28 + 0.4, px = cx + Math.cos(a) * rr * 0.66, py = cy + Math.sin(a) * rr * 0.6;
-        ctx.save(); ctx.translate(px, py); ctx.rotate(a + 1.57);
-        ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(-w * 0.07 + 2, -h * 0.045 + 2, w * 0.14, h * 0.09);
-        ctx.fillStyle = markise[i % markise.length]; ctx.fillRect(-w * 0.07, -h * 0.045, w * 0.14, h * 0.09);
-        ctx.fillStyle = 'rgba(255,255,255,0.35)'; for (let s = 0; s < 3; s++) ctx.fillRect(-w * 0.07 + s * w * 0.05, -h * 0.045, w * 0.025, h * 0.09);
-        ctx.restore();
+      // Marktstände entlang der Längsseiten
+      const markise = [[176, 58, 48], [216, 192, 96], [58, 106, 160], [90, 138, 58], [208, 112, 48], [232, 224, 200], [130, 70, 120]];
+      const waren = ['#c83a2a', '#5a9a3a', '#b8864a', '#e0c050', '#8a5a3a', '#d8d0c0', '#6a3a7a'];
+      const standB = w * 0.105, standT = h * 0.15;
+      for (const reihe of [0, 1]) {
+        for (let i = 0; i < 6; i++) {
+          if (reihe === 0 && (i === 2 || i === 3)) continue; // Lücke vor dem Rathaus
+          const sx = w * 0.12 + i * w * 0.135 + (rnd2() - 0.5) * 3, sy = reihe ? h * 0.79 : h * 0.06;
+          const fa = markise[(i * 3 + reihe * 2) % markise.length];
+          ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(sx + 2, sy + 2, standB, standT);
+          ctx.fillStyle = '#6a4a2a'; ctx.fillRect(sx, sy + (reihe ? 0 : standT * 0.55), standB, standT * 0.45);
+          for (let k = 0; k < 7; k++) { ctx.fillStyle = waren[(i + k) % waren.length]; ctx.beginPath(); ctx.arc(sx + 2 + k * standB / 7.5, sy + (reihe ? standT * 0.22 : standT * 0.78), 1.4, 0, 7); ctx.fill(); }
+          ctx.fillStyle = css(fa); ctx.fillRect(sx, sy + (reihe ? standT * 0.45 : 0), standB, standT * 0.55);
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          for (let s2 = 0; s2 < standB; s2 += 6) ctx.fillRect(sx + s2, sy + (reihe ? standT * 0.45 : 0), 3, standT * 0.55);
+          if (i % 2 === 0) { ctx.fillStyle = '#7a5530'; ctx.beginPath(); ctx.arc(sx + standB + 3, sy + standT / 2, 2.6, 0, 7); ctx.fill(); ctx.strokeStyle = '#4a3018'; ctx.lineWidth = 0.8; ctx.stroke(); }
+          else { ctx.fillStyle = '#9a7a4a'; ctx.fillRect(sx + standB + 1, sy + standT * 0.3, 5, 5); }
+        }
+      }
+      // Marktbrunnen (achteckig) mit Säule
+      const bx = w * 0.7, by = h * 0.5, br = h * 0.13;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283 + 0.39; ctx.lineTo(bx + 2 + Math.cos(a) * br, by + 2 + Math.sin(a) * br); } ctx.fill();
+      ctx.fillStyle = '#8e8a80';
+      ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283 + 0.39; ctx.lineTo(bx + Math.cos(a) * br, by + Math.sin(a) * br); } ctx.fill();
+      ctx.fillStyle = '#3c6c90';
+      ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283 + 0.39; ctx.lineTo(bx + Math.cos(a) * br * 0.78, by + Math.sin(a) * br * 0.78); } ctx.fill();
+      ctx.fillStyle = 'rgba(200,230,255,0.5)'; ctx.beginPath(); ctx.arc(bx - br * 0.25, by - br * 0.25, br * 0.18, 0, 7); ctx.fill();
+      ctx.fillStyle = '#b8b2a4'; ctx.beginPath(); ctx.arc(bx, by, br * 0.26, 0, 7); ctx.fill();
+      ctx.fillStyle = '#d8c070'; ctx.beginPath(); ctx.arc(bx, by, br * 0.12, 0, 7); ctx.fill();
+      // Marktkreuz und Pranger
+      const kx = w * 0.3, ky = h * 0.5;
+      ctx.fillStyle = '#8a857a'; ctx.fillRect(kx - 5, ky - 5, 10, 10);
+      ctx.fillStyle = '#b0aa9c'; ctx.fillRect(kx - 1.5, ky - 7, 3, 14); ctx.fillRect(kx - 5, ky - 1.5, 10, 3);
+      ctx.fillStyle = '#5a4028'; ctx.fillRect(w * 0.47, h * 0.66, 3, 3);
+      // Viehgatter am einen Ende (Viehmarkt)
+      ctx.strokeStyle = '#6b4a2a'; ctx.lineWidth = 1.4; ctx.setLineDash([3, 2]);
+      ctx.strokeRect(w * 0.04, h * 0.3, w * 0.09, h * 0.4); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(160,130,70,0.6)'; ctx.fillRect(w * 0.045, h * 0.31, w * 0.08, h * 0.38);
+      break;
+    }
+    case 'rathaus': {
+      // Laubengang (offene Verkaufshalle) zur Platzseite, darüber steiles Ziegeldach mit Treppengiebeln und Dachreiter
+      erde(ctx, 0, 0, w, h, [150, 140, 124]);
+      ctx.fillStyle = '#8a8274'; ctx.fillRect(0, 0, w, h * 0.24);
+      ctx.fillStyle = '#26201a';
+      for (let x = w * 0.06; x < w * 0.94; x += w * 0.11) { ctx.beginPath(); ctx.moveTo(x, h * 0.2); ctx.lineTo(x, h * 0.1); ctx.arc(x + w * 0.04, h * 0.1, w * 0.04, Math.PI, 0); ctx.lineTo(x + w * 0.08, h * 0.2); ctx.fill(); }
+      satteldach(ctx, 2, h * 0.2, w - 4, h * 0.78, 'ziegel', r, { first: false, kamin: kamin() });
+      ctx.fillStyle = '#9a9488';
+      for (const gx of [2, w - 9]) for (let s2 = 0; s2 < 4; s2++) ctx.fillRect(gx, h * 0.24 + s2 * h * 0.18, 7, h * 0.1);
+      const tx = w / 2, ty = h * 0.59, ts = w * 0.13;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(tx - ts / 2 + 3, ty - ts / 2 + 3, ts, ts);
+      ctx.fillStyle = '#e8e0c8'; ctx.fillRect(tx - ts / 2, ty - ts / 2, ts, ts);
+      ctx.fillStyle = '#4a5a6a'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - ts / 2, ty - ts / 2); ctx.lineTo(tx + ts / 2, ty - ts / 2); ctx.fill();
+      ctx.fillStyle = '#5a6a7a'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx + ts / 2, ty - ts / 2); ctx.lineTo(tx + ts / 2, ty + ts / 2); ctx.fill();
+      ctx.fillStyle = '#3a4a5a'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - ts / 2, ty + ts / 2); ctx.lineTo(tx + ts / 2, ty + ts / 2); ctx.fill();
+      ctx.fillStyle = '#d8b850'; ctx.beginPath(); ctx.arc(tx, ty, 2.2, 0, 7); ctx.fill();
+      fahne(ctx, w * 0.12, h * 0.14, w * 0.12, '#2a5aa0');
+      break;
+    }
+    case 'kirche': {
+      // geostet: Turm im Westen (oben im Bild), Schiff mit Schieferdach, runde Apsis im Osten (unten)
+      ctx.fillStyle = 'rgba(120,140,90,0.55)'; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 10; i++) { ctx.fillStyle = '#9a968a'; ctx.fillRect(w * (i % 2 ? 0.03 : 0.85), h * (0.25 + i * 0.06), w * 0.09, h * 0.025); }
+      satteldach(ctx, w * 0.17, h * 0.2, w * 0.66, h * 0.6, 'schiefer', r, { first: true });
+      ctx.fillStyle = '#4e5664'; ctx.beginPath(); ctx.arc(w / 2, h * 0.8, w * 0.27, 0, Math.PI); ctx.fill();
+      ctx.strokeStyle = '#30363f'; ctx.lineWidth = 1;
+      for (let a = 0.2; a < 3.0; a += 0.45) { ctx.beginPath(); ctx.moveTo(w / 2, h * 0.8); ctx.lineTo(w / 2 + Math.cos(a) * w * 0.27, h * 0.8 + Math.sin(a) * w * 0.27); ctx.stroke(); }
+      const ts = w * 0.62, tx = w / 2, ty = h * 0.13;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(tx - ts / 2 + 4, ty - ts / 2 + 4, ts, ts);
+      ctx.fillStyle = '#8a8476'; ctx.fillRect(tx - ts / 2 - 1, ty - ts / 2 - 1, ts + 2, ts + 2);
+      ctx.fillStyle = '#5c6472'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - ts / 2, ty - ts / 2); ctx.lineTo(tx + ts / 2, ty - ts / 2); ctx.fill();
+      ctx.fillStyle = '#6c7482'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - ts / 2, ty - ts / 2); ctx.lineTo(tx - ts / 2, ty + ts / 2); ctx.fill();
+      ctx.fillStyle = '#464e5a'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx + ts / 2, ty - ts / 2); ctx.lineTo(tx + ts / 2, ty + ts / 2); ctx.fill();
+      ctx.fillStyle = '#3a414c'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - ts / 2, ty + ts / 2); ctx.lineTo(tx + ts / 2, ty + ts / 2); ctx.fill();
+      ctx.fillStyle = '#e0c060'; ctx.fillRect(tx - 1, ty - 4, 2, 8); ctx.fillRect(tx - 3, ty - 1, 6, 2);
+      break;
+    }
+    case 'stadthaus': {
+      // Bürgerhaus: steiles Dach, Gauben zur Straße, Brandmauern an den Seiten
+      const k = kamin();
+      const art = ['ziegel', 'schiefer', 'ziegel', 'schindel'][variante % 4];
+      ctx.fillStyle = '#8a8478'; ctx.fillRect(0, 0, w, h);
+      satteldach(ctx, 3, 1, w - 6, h - 2, art, r, { kamin: k, first: false });
+      ctx.fillStyle = '#9a968c'; ctx.fillRect(0, 0, 3, h); ctx.fillRect(w - 3, 0, 3, h);
+      for (let i = 0; i < 2; i++) {
+        const gx = w * (0.28 + i * 0.36), gy = h * 0.18;
+        ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(gx - 4, gy - 3 + 2, 9, 9);
+        ctx.fillStyle = css(hell(DACH[art], 1.15)); ctx.beginPath(); ctx.moveTo(gx - 4, gy + 6); ctx.lineTo(gx, gy - 4); ctx.lineTo(gx + 4, gy + 6); ctx.fill();
+        ctx.fillStyle = '#2a2620'; ctx.fillRect(gx - 1.5, gy + 1, 3, 4);
       }
       break;
     }
@@ -476,6 +577,8 @@ export const FIGUREN = {
   bauarbeiter: { kleidung: [150, 120, 90], kopf: [70, 50, 30], werkzeug: 'hammer' },
   bergmann: { kleidung: [90, 80, 74], kopf: [60, 50, 40], hut: 'kapuze', werkzeug: 'hacke' },
   fischer: { kleidung: [70, 90, 110], kopf: [120, 90, 60], hut: 'stroh' },
+  bogner: { kleidung: [60, 110, 60], kopf: [90, 110, 60], hut: 'kapuze', werkzeug: 'bogen' },
+  marktfrau: { kleidung: [170, 120, 60], kopf: [230, 225, 210], kleid: true },
   soldat: { kleidung: [160, 40, 36], kopf: [150, 150, 156], hut: 'helm', werkzeug: 'speer', schild: true },
   raeuber: { kleidung: [60, 52, 44], kopf: [50, 44, 36], hut: 'kapuze', werkzeug: 'schwert' },
 };
@@ -515,6 +618,7 @@ function figurBild(typ, phase, aktion) {
     case 'axt': ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(hx, hy + 2); ctx.lineTo(hx, hy - 7); ctx.stroke(); ctx.fillStyle = '#a0a4ac'; ctx.fillRect(hx - 0.5, hy - 8, 3, 3); break;
     case 'hammer': ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(hx, hy + 2); ctx.lineTo(hx, hy - 5); ctx.stroke(); ctx.fillStyle = '#606068'; ctx.fillRect(hx - 2, hy - 7, 4, 2.4); break;
     case 'hacke': ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(hx, hy + 3); ctx.lineTo(hx, hy - 7); ctx.stroke(); ctx.strokeStyle = '#8a8c90'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(hx - 3, hy - 7); ctx.lineTo(hx + 2, hy - 7); ctx.stroke(); break;
+    case 'bogen': ctx.strokeStyle = '#6a4a22'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(hx - 2, hy - 1, 6.5, aktion ? -2.6 : -2.2, aktion ? -0.5 : -0.9); ctx.stroke(); ctx.strokeStyle = 'rgba(230,230,210,0.8)'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(hx - 2 + Math.cos(aktion ? -2.6 : -2.2) * 6.5, hy - 1 + Math.sin(aktion ? -2.6 : -2.2) * 6.5); ctx.lineTo(hx - 2 + Math.cos(aktion ? -0.5 : -0.9) * 6.5, hy - 1 + Math.sin(aktion ? -0.5 : -0.9) * 6.5); ctx.stroke(); break;
     case 'sack': ctx.fillStyle = '#c8b088'; ctx.beginPath(); ctx.ellipse(cx + 3.5, cy - 1, 3.6, 3, 0.4, 0, 7); ctx.fill(); ctx.strokeStyle = '#8a7050'; ctx.lineWidth = 0.8; ctx.stroke(); break;
   }
   if (t.schild) { ctx.fillStyle = '#7a2a24'; ctx.beginPath(); ctx.arc(cx - 6.5, cy - 0.5, 3.4, 0, 7); ctx.fill(); ctx.strokeStyle = '#d8c070'; ctx.lineWidth = 0.9; ctx.stroke(); }

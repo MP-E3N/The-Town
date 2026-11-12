@@ -60,8 +60,8 @@ function erzeuge(seed) {
     h -= tal * tal * 0.16;
     h += huegel(x, y, burg, 7.5, 0.24);
     h += huegel(x, y, erzOrt, 7.5, 0.17) + huegel(x, y, steinOrt, 7, 0.16);
-    const dm = ((x - markt.x) * (x - markt.x) + (y - markt.y) * (y - markt.y)) / 81;
-    if (dm < 1) { const t = (1 - dm) * (1 - dm) * 0.75; h = h * (1 - t) + 0.40 * t; }
+    const dm2 = ((x - markt.x) * (x - markt.x) + (y - markt.y) * (y - markt.y)) / 144;
+    if (dm2 < 1) { const t = Math.min(1, (1 - dm2) * 1.6) * 0.92; h = h * (1 - t) + 0.40 * t; }
     const hw = flussBreite(y);
     if (d < hw) {
       const t = d / hw; h = Math.min(h, 0.22 + 0.07 * t * t);

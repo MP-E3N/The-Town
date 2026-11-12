@@ -16,9 +16,11 @@ import { abgeleitet } from '../sim/abgeleitet.js';
 import { wegGecached } from '../sim/pfad.js';
 import { tuer, tuerKachel } from '../sim/baumeister.js';
 import { hash32, datum } from '../sim/lib.js';
-import { erzeugeGelaende, zeichneGelaende } from './gelaende.js';
+import { erzeugeGelaende, zeichneGelaende, vorrendern } from './gelaende.js';
 import { gebaeudeSprite, baeume, figurSprites, figurSchatten, tierSprite } from './sprites.js';
 import { sicht } from './kamera.js';
+import { kampfwerte } from '../sim/militaer.js';
+import { erzeugeDeko, zeichneDeko } from './deko.js';
 
 const RAD = Math.PI / 180;
 const FIGUR_GROESSE = 0.54; // Kacheln
@@ -34,9 +36,10 @@ export function erzeugeSzene(canvas, z) {
     strassen: { version: -1, liste: [] },
     partikel: [], passanten: [], anims: [], pfeile: [], einheitAlt: new Map(), laufPhase: new Map(),
     letzteEreignis: z.ereignisNr, brennt: new Map(), arbeitsplatz: new Map(), wege: new Map(),
-    zeit: 0, schnee: [], stat: {},
+    zeit: 0, schnee: [], stat: {}, deko: erzeugeDeko(), dekoBaeume: 0,
   };
   sz.zonen.width = KARTE_B; sz.zonen.height = KARTE_H;
+  vorrendern(sz.gr, k.burg.x / 1000, k.burg.y / 1000);
   baeume();
   return sz;
 }
@@ -133,6 +136,9 @@ function punktAuf(w, t) {
   return { x: a[0] + (b[0] - a[0]) * f, y: a[1] + (b[1] - a[1]) * f, w: Math.atan2(b[1] - a[1], b[0] - a[0]) };
 }
 
+/** Bürgerhäuser (8 Plätze) bekommen ein eigenes Bild. */
+function spriteArt(g) { return g.art === 'haus' && g.wohn === 8 ? 'stadthaus' : g.art; }
+
 function figur(ctx, typ, x, y, winkel, phase, aktion, s = FIGUR_GROESSE) {
   const sp = figurSprites(typ);
   ctx.drawImage(figurSchatten(), x - s / 2 + 0.04, y - s / 2 + 0.05, s, s);
@@ -142,7 +148,7 @@ function figur(ctx, typ, x, y, winkel, phase, aktion, s = FIGUR_GROESSE) {
 
 // ── Partikel ───────────────────────────────────────────────────────────
 function partikel(sz, typ, x, y, vx, vy, leben, groesse) {
-  if (sz.partikel.length > 500) return;
+  if (sz.partikel.length > 300) return;
   sz.partikel.push({ typ, x, y, vx, vy, t: 0, leben, groesse });
 }
 
@@ -222,8 +228,8 @@ function ereignisseLesen(sz, z) {
   for (const e of z.ereignisse) {
     if (e.nr <= sz.letzteEreignis) continue;
     if (e.typ === 'pfeil') {
-      const g = z.gebaeude[e.von];
-      sz.pfeile.push({ ax: g.x / 1000, ay: g.y / 1000, bx: e.x / 1000, by: e.y / 1000, t: 0 });
+      const a = e.vonEinheit !== undefined ? { x: e.ax, y: e.ay } : z.gebaeude[e.von];
+      sz.pfeile.push({ ax: a.x / 1000, ay: a.y / 1000, bx: e.x / 1000, by: e.y / 1000, t: 0 });
     } else if (e.typ === 'baum') {
       const x = (e.kachel % KARTE_B) + 0.5, y = Math.floor(e.kachel / KARTE_B) + 0.5;
       sz.anims.push({ typ: 'baumfall', x, y, t: 0, leben: 1.4, nadel: sz.nadel[e.kachel], w: Math.random() * 6.28 });
@@ -266,7 +272,7 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
   // 1) Gelände in Bildschirm-Pixeln
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#20303a'; ctx.fillRect(0, 0, kam.b, kam.h);
-  zeichneGelaende(ctx, sz.gr, kam, 2);
+  zeichneGelaende(ctx, sz.gr, kam, 1);
   if (saison === 2) { ctx.fillStyle = 'rgba(190,120,40,0.10)'; ctx.fillRect(0, 0, kam.b, kam.h); }
   if (saison === 1) { ctx.fillStyle = 'rgba(230,210,120,0.05)'; ctx.fillRect(0, 0, kam.b, kam.h); }
 
@@ -289,28 +295,6 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
       ctx.moveTo(x, y); ctx.lineTo(x + 0.25 * Math.sin(ph * 2.6), y);
     }
     ctx.stroke();
-  }
-
-  // Gras, Blumen, Steinchen beim Nahzoom (nur Optik, weltfest per Hash)
-  if (zoom >= 30) {
-    const tx0 = Math.max(0, Math.floor(v.x0)), tx1 = Math.min(KARTE_B - 1, Math.ceil(v.x1)), ty0 = Math.max(0, Math.floor(v.y0)), ty1 = Math.min(KARTE_H - 1, Math.ceil(v.y1));
-    const gras = new Path2D(), blume = [new Path2D(), new Path2D(), new Path2D()], stein = new Path2D();
-    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
-      const i = ty * KARTE_B + tx;
-      if (k.wasser[i] || c.strasse[i] || c.belegt[i] || c.feld[i] || z.wald[i] >= 50) continue;
-      for (let j = 0; j < 4; j++) {
-        const hh = hash32(tx, ty, 100 + j);
-        const x = tx + (hh & 255) / 256, y = ty + ((hh >>> 8) & 255) / 256, art = (hh >>> 16) & 15;
-        if (art < 7) { gras.moveTo(x, y); gras.lineTo(x - 0.05, y - 0.1); gras.moveTo(x + 0.03, y); gras.lineTo(x + 0.04, y - 0.12); gras.moveTo(x + 0.06, y); gras.lineTo(x + 0.11, y - 0.08); }
-        else if (art < 9 && saison < 2) { const p = blume[art - 7 + ((hh >>> 20) & 1)]; p.moveTo(x + 0.03, y); p.arc(x, y, 0.03, 0, 7); }
-        else if (art === 9) { stein.moveTo(x + 0.06, y); stein.ellipse(x, y, 0.06, 0.04, 0, 0, 7); }
-      }
-    }
-    ctx.lineWidth = 0.022; ctx.strokeStyle = saison === 2 ? 'rgba(120,100,40,0.55)' : 'rgba(40,80,30,0.45)'; ctx.stroke(gras);
-    ctx.fillStyle = 'rgba(240,230,120,0.9)'; ctx.fill(blume[0]);
-    ctx.fillStyle = 'rgba(230,240,250,0.9)'; ctx.fill(blume[1]);
-    ctx.fillStyle = 'rgba(200,90,160,0.85)'; ctx.fill(blume[2]);
-    ctx.fillStyle = 'rgba(150,146,136,0.9)'; ctx.fill(stein);
   }
 
   // Zonen
@@ -392,6 +376,9 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
     if (z.tick - ru.tick < 900 && Math.random() < dtEcht * 3) partikel(sz, 'qualm', rx + (Math.random() - 0.5) * ru.b / 1000, ry + (Math.random() - 0.5) * ru.t / 1000, 0.1, -0.25, 3, 0.12);
   }
 
+  // Bäume, Gras, Blumen: vorgezeichnete Chunks (render/deko.js)
+  sz.dekoBaeume = zeichneDeko(ctx, sz.deko, z, c, k, sz.nadel, kam, saison, 2);
+
   // Brennende Gebäude bestimmen (Räuber plündern)
   for (const u of z.einheiten) if (u.art === 'raeuber' && u.zustand === 'pluendern' && u.ziel >= 0) sz.brennt.set(u.ziel, sz.zeit + 4);
 
@@ -407,13 +394,13 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
   }
   for (const g of gl) {
     if (g.art === 'platz') continue;
-    const sp = gebaeudeSprite(g.art, g.variante, g.b, g.t, winter);
+    const sp = gebaeudeSprite(spriteArt(g), g.variante, g.b, g.t, winter);
     ctx.globalAlpha = g.zustand === 'bau' ? 0.12 : 0.3;
     zeichneGedreht(ctx, sp.schatten, g.x / 1000 + sOff * (GEBAEUDE[g.art].mauer ? 0.6 : 1.4), g.y / 1000 + sOff * (GEBAEUDE[g.art].mauer ? 0.8 : 1.8), g.b / 1000, g.t / 1000, g.w * RAD);
   }
   ctx.globalAlpha = 1;
   for (const g of gl) {
-    const sp = gebaeudeSprite(g.art, g.variante, g.b, g.t, winter);
+    const sp = gebaeudeSprite(spriteArt(g), g.variante, g.b, g.t, winter);
     const gx = g.x / 1000, gy = g.y / 1000, gb = g.b / 1000, gt = g.t / 1000;
     if (g.zustand === 'bau') {
       const p = Math.min(1, g.arbeit / GEBAEUDE[g.art].arbeit);
@@ -441,7 +428,7 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
       }
     }
     // Rauch aus Kaminen
-    if (g.zustand === 'fertig' && zoom >= 12 && sp.kamine.length) {
+    if (g.zustand === 'fertig' && zoom >= 16 && sp.kamine.length) {
       const rate = (g.art === 'haus' ? [0.25, 0.12, 0.45, 0.9][saison] : g.art === 'schmiede' ? (g.belegt ? 2 : 0.2) : 0.15) * dt * 1.5;
       if (Math.random() < rate) {
         const km = sp.kamine[Math.floor(Math.random() * sp.kamine.length)];
@@ -460,35 +447,7 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
     }
   }
 
-  // Bäume
   const bs = baeume();
-  const tx0 = Math.max(0, Math.floor(v.x0)), tx1 = Math.min(KARTE_B - 1, Math.ceil(v.x1)), ty0 = Math.max(0, Math.floor(v.y0)), ty1 = Math.min(KARTE_H - 1, Math.ceil(v.y1));
-  const viele = zoom < 11;
-  const baumListe = [];
-  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
-    const i = ty * KARTE_B + tx, wv = z.wald[i];
-    if (wv <= 0 || c.strasse[i] || c.belegt[i] || c.feld[i]) continue;
-    const n = viele ? (wv >= 50 ? 1 : 0) : Math.ceil(wv / 25);
-    for (let j = 0; j < n; j++) {
-      const hh = hash32(tx, ty, j);
-      const x = tx + 0.2 + ((hh & 255) / 255) * 0.6, y = ty + 0.2 + (((hh >> 8) & 255) / 255) * 0.6;
-      const gross = viele ? 1.5 : (0.75 + ((hh >> 16) & 255) / 255 * 0.5) * (wv < 25 ? 0.5 : 1);
-      baumListe.push(x, y, gross, hh, sz.nadel[i]);
-    }
-  }
-  for (let i = 0; i < baumListe.length; i += 5) {
-    const s = baumListe[i + 2] * 1.05;
-    ctx.drawImage(bs.schatten, baumListe[i] - s / 2 + 0.18, baumListe[i + 1] - s / 2 + 0.24, s, s);
-  }
-  for (let i = 0; i < baumListe.length; i += 5) {
-    const x = baumListe[i], y = baumListe[i + 1], s = baumListe[i + 2], hh = baumListe[i + 3];
-    const bild = baumListe[i + 4] ? bs.nadel[saison][(hh >>> 3) % 4] : bs.laub[saison][(hh >>> 3) % 6];
-    // leichtes Wiegen beim Nahzoom
-    if (zoom > 40) {
-      const wz = Math.sin(sz.zeit * 1.2 + x * 0.7 + y) * 0.02;
-      zeichneGedreht(ctx, bild, x, y, s, s, wz);
-    } else ctx.drawImage(bild, x - s / 2, y - s / 2, s, s);
-  }
 
   // Figuren nur ab etwas Nähe
   const fig = zoom >= 10;
@@ -599,6 +558,8 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
         figur(ctx, tt <= 1 ? 'traeger' : 'buerger', p.x, p.y, rw, Math.floor(sz.zeit * 7 + l.id), -1);
       }
     }
+    // Markttreiben: Händler an den Ständen, Käufer schlendern über den Platz
+    marktTreiben(sz, z, ctx, v, dt);
     // Passanten
     passantenPflegen(sz, z, dt);
     for (const w of sz.passanten) {
@@ -638,9 +599,14 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
     if (!sichtbar(v, x, y, 1)) continue;
     const ph = (sz.laufPhase.get(u.id) || 0) + (alt ? Math.hypot(u.x / 1000 - alt[0], u.y / 1000 - alt[1]) * 9 : 0);
     sz.laufPhase.set(u.id, ph);
-    const kampf = KAMPF[u.art];
+    const kampf = kampfwerte(u);
     const schlag = u.cd > kampf.takt - 4 ? 1 : -1;
-    const typ = u.art === 'soldat' ? 'soldat' : 'raeuber';
+    const typ = u.art === 'soldat' ? (u.typ === 'bogen' ? 'bogner' : 'soldat') : 'raeuber';
+    if (ui.einheiten && ui.einheiten.has(u.id)) {
+      ctx.strokeStyle = '#7cf07c'; ctx.lineWidth = Math.max(0.05, 1.5 / zoom);
+      ctx.beginPath(); ctx.ellipse(x, y + 0.08, 0.36, 0.28, 0, 0, 7); ctx.stroke();
+      if (u.befehl && u.befehl.typ === 'gehe' && zoom > 12) { ctx.fillStyle = 'rgba(124,240,124,0.5)'; ctx.beginPath(); ctx.arc(u.befehl.x / 1000, u.befehl.y / 1000, 0.1, 0, 7); ctx.fill(); }
+    }
     if (fig) {
       figur(ctx, typ, x, y, u.blick * RAD, Math.floor(ph), schlag, 0.62);
       if (u.hp < u.hpMax && zoom > 20) {
@@ -674,6 +640,18 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
   ctx.setLineDash([0.8, 0.5]);
   ctx.beginPath(); ctx.arc(burg.x / 1000, burg.y / 1000, LAND_RADIUS, 0, 7); ctx.stroke(); ctx.setLineDash([]);
 
+  // Auswahlrahmen (Einheiten)
+  if (ui.rahmen) {
+    const r = ui.rahmen;
+    ctx.fillStyle = 'rgba(124,240,124,0.12)'; ctx.strokeStyle = 'rgba(124,240,124,0.9)'; ctx.lineWidth = Math.max(0.04, 1 / zoom);
+    ctx.fillRect(Math.min(r.ax, r.bx), Math.min(r.ay, r.by), Math.abs(r.bx - r.ax), Math.abs(r.by - r.ay));
+    ctx.strokeRect(Math.min(r.ax, r.bx), Math.min(r.ay, r.by), Math.abs(r.bx - r.ax), Math.abs(r.by - r.ay));
+  }
+  if (ui.befehlsZiel && sz.zeit - ui.befehlsZiel.t < 0.8) {
+    const f = (sz.zeit - ui.befehlsZiel.t) / 0.8;
+    ctx.strokeStyle = ui.befehlsZiel.angriff ? `rgba(240,80,60,${1 - f})` : `rgba(124,240,124,${1 - f})`; ctx.lineWidth = Math.max(0.06, 2 / zoom);
+    ctx.beginPath(); ctx.arc(ui.befehlsZiel.x, ui.befehlsZiel.y, 0.3 + f * 0.6, 0, 7); ctx.stroke();
+  }
   // Sammelpunkt
   const sp = z.herren[0].sammelpunkt;
   if (sp) {
@@ -705,7 +683,39 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
     }
   } else sz.schnee.length = 0;
 
-  sz.stat = { ms: Math.round((performance.now() - t0) * 10) / 10, baeume: baumListe.length / 5, partikel: sz.partikel.length, passanten: sz.passanten.length, gebaeude: gl.length };
+  sz.stat = { ms: Math.round((performance.now() - t0) * 10) / 10, baeume: sz.dekoBaeume, partikel: sz.partikel.length, passanten: sz.passanten.length, gebaeude: gl.length };
+}
+
+/** Nur Optik: Händler stehen an den Ständen, Käufer schlendern auf dem Platz (mehr Bewohner = mehr Trubel). */
+function marktTreiben(sz, z, ctx, v, dt) {
+  const platz = z.gebaeude[z.herren[0].markt];
+  if (!platz || !sichtbar(v, platz.x / 1000, platz.y / 1000, 6)) return;
+  const pb = platz.b / 1000, pt = platz.t / 1000, cw = Math.cos(platz.w * RAD), sw = Math.sin(platz.w * RAD);
+  const welt = (lu, lv) => [platz.x / 1000 + lu * cw - lv * sw, platz.y / 1000 + lu * sw + lv * cw];
+  // Händler (fest an den Ständen)
+  for (const reihe of [0, 1]) for (let i = 0; i < 6; i++) {
+    if (reihe === 0 && (i === 2 || i === 3)) continue;
+    const lu = -pb / 2 + pb * (0.12 + i * 0.135 + 0.05), lv = reihe ? pt * 0.24 : -pt * 0.24;
+    const [x, y] = welt(lu, lv);
+    const zu = platz.w * RAD + (reihe ? -Math.PI / 2 : Math.PI / 2);
+    figur(ctx, i % 2 ? 'marktfrau' : 'buerger', x, y, zu, 0, Math.sin(sz.zeit * 1.5 + i) > 0.85 ? 1 : -1, 0.5);
+  }
+  // Käufer
+  const soll = Math.min(26, Math.floor(z.herren[0].bewohner / 3));
+  if (!sz.markt) sz.markt = [];
+  while (sz.markt.length < soll) sz.markt.push({ lu: (Math.random() - 0.5) * pb * 0.8, lv: (Math.random() - 0.5) * pt * 0.5, zu: null, typ: Math.random() < 0.5 ? 'buergerin' : 'buerger', phase: 0, warte: Math.random() * 3, w: 0 });
+  if (sz.markt.length > soll) sz.markt.length = soll;
+  for (const m of sz.markt) {
+    if (m.warte > 0) m.warte -= dt;
+    else {
+      if (!m.zu) m.zu = { lu: (Math.random() - 0.5) * pb * 0.8, lv: (Math.random() < 0.5 ? -1 : 1) * pt * (0.05 + Math.random() * 0.12) };
+      const dx = m.zu.lu - m.lu, dy = m.zu.lv - m.lv, d = Math.hypot(dx, dy);
+      if (d < 0.1) { m.zu = null; m.warte = 1 + Math.random() * 4; }
+      else { m.lu += dx / d * 0.55 * dt; m.lv += dy / d * 0.55 * dt; m.w = Math.atan2(dx * sw + dy * cw, dx * cw - dy * sw); m.phase += dt * 5; }
+    }
+    const [x, y] = welt(m.lu, m.lv);
+    figur(ctx, m.typ, x, y, m.w, Math.floor(m.phase), -1, 0.5);
+  }
 }
 
 function zeichneWerkzeug(ctx, z, ui, winter, zoom) {

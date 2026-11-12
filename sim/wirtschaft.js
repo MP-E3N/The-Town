@@ -12,7 +12,8 @@ import {
   TICKS_PRO_TAG, TAGE_PRO_JAHRESZEIT, KARTE_B, KARTE_H, TRAGEN, FELD, WALD, BEDARF, STEUER, ZUZUG,
   MILITAER, ZIEL, NIEDERLAGE_BEWOHNER, TEMPO, WAGEN,
 } from '../data/werte.js';
-import { GEBAEUDE } from '../data/gebaeude.js';
+import { GEBAEUDE, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
+import { nehmen, geben, naechstesLager, hatKosten, bezahleKosten } from './lager.js';
 import { karteFuer } from './karte.js';
 import { abgeleitet } from './abgeleitet.js';
 import { wegGecached, pfadLaenge } from './pfad.js';
@@ -47,7 +48,7 @@ function hatArbeit(z, g, h) {
   const typ = GEBAEUDE[g.art];
   if (g.art === 'hof') return !!feldAufgabe(z, g);
   if (g.puffer >= TRAGEN * 2) return false;
-  if (g.art === 'schmiede' && !g.material && (h.lager.holz < 1 || h.lager.eisen < 1)) return false;
+  if (g.art === 'schmiede' && !g.material && !hatKosten(h, SCHMIEDE_PRODUKTE[g.produkt || 'speere'].material)) return false;
   if (g.blockiert && z.tick % 600 !== 0) return false;
   return !!typ.arbeiter;
 }
@@ -78,19 +79,8 @@ export function arbeitVerteilen(z, herr) {
   h.arbeitslos = frei;
 }
 
-function naechstesLager(z, g) {
-  let best = null, bd = Infinity;
-  for (const s of z.gebaeude) {
-    if (s.besitzer !== g.besitzer || s.zustand !== 'fertig') continue;
-    if (s.art !== 'speicher' && s.art !== 'burg') continue;
-    const d = abstand(g.x, g.y, s.x, s.y);
-    if (d < bd) { bd = d; best = s; }
-  }
-  return best;
-}
-
 function startLieferung(z, g, ware) {
-  const ziel = naechstesLager(z, g);
+  const ziel = naechstesLager(z, g.besitzer, g.x, g.y);
   if (!ziel) return;
   const wagen = g.art === 'hof';
   const menge = Math.min(wagen ? WAGEN.menge : TRAGEN, g.puffer);
@@ -134,7 +124,8 @@ function produktion(z) {
     if (g.art === 'hof') hofArbeit(z, g);
     else if (g.belegt > 0 && g.puffer < TRAGEN * 2) {
       if (g.art === 'schmiede' && !g.material) {
-        if (h.lager.holz >= 1 && h.lager.eisen >= 1) { h.lager.holz--; h.lager.eisen--; g.material = 1; } else continue;
+        const mat = SCHMIEDE_PRODUKTE[g.produkt || 'speere'].material;
+        if (hatKosten(h, mat)) { bezahleKosten(z, g.besitzer, mat, g.x, g.y); g.material = 1; g.materialFuer = g.produkt || 'speere'; } else continue;
       }
       g.fortschritt += g.belegt;
       let tpe = typ.ticksProEinheit;
@@ -151,11 +142,24 @@ function produktion(z) {
           g.blockiert = '';
           ereignis(z, { typ: 'baum', kachel: baum, von: g.id });
         }
-        if (g.art === 'schmiede') g.material = 0;
+        if (g.art === 'schmiede') {
+          g.material = 0;
+          const p = g.pufferWaren || (g.pufferWaren = { speere: 0, boegen: 0 });
+          p[g.materialFuer || 'speere']++;
+          g.puffer = p.speere + p.boegen;
+          continue;
+        }
         g.puffer++;
       }
     }
     const maxTraeger = g.art === 'hof' ? WAGEN.anzahl : 1;
+    if (g.art === 'schmiede') { // eigene Puffer je Ware
+      for (const w of ['speere', 'boegen']) {
+        const p = g.pufferWaren || (g.pufferWaren = { speere: 0, boegen: 0 });
+        if (g.traeger < 1 && (p[w] >= 4 || (p[w] > 0 && g.seitLieferung > 300))) { g.puffer = p[w]; startLieferung(z, g, w); p[w] = g.puffer; g.puffer = p.speere + p.boegen; }
+      }
+      continue;
+    }
     if (g.traeger < maxTraeger && (g.puffer >= TRAGEN || (g.puffer > 0 && g.seitLieferung > 400))) startLieferung(z, g, typ.ware);
   }
 }
@@ -195,14 +199,13 @@ function lieferungen(z) {
       l.angekommen = true;
       const h = z.herren[l.herr];
       const ziel = z.gebaeude[l.nach];
-      if (ziel && ziel.zustand === 'fertig') {
-        h.lager[l.ware] += l.menge;
-        h.heute[l.ware] = (h.heute[l.ware] || 0) + l.menge;
-      }
+      // WARUM auch bei zerstörtem Ziel: Der Träger bringt es dann ins nächste Lager.
+      geben(z, l.herr, ziel, l.ware, l.menge);
+      if (!l.umlagern) h.heute[l.ware] = (h.heute[l.ware] || 0) + l.menge;
     }
     if (z.tick >= l.start + 2 * l.dauer) {
       const g = z.gebaeude[l.von];
-      if (g && g.traeger > 0) g.traeger--;
+      if (g && g.traeger > 0 && !l.umlagern) g.traeger--;
       l.fertig = true; raus = true;
     }
   }
@@ -234,13 +237,14 @@ function anwerben(z) {
       g.anwerbung++;
       if (g.anwerbung >= MILITAER.anwerben.ticks) {
         g.anwerbung = 0;
-        neuerSoldat(z, g.besitzer, g);
+        neuerSoldat(z, g.besitzer, g, g.anwerbungTyp || 'speer');
         const n = soldatenVon(z, g.besitzer);
         meldung(z, g.besitzer, `Ein Rekrut tritt in ${typ.name} an (Garnison ${n}).`, 'gut', 'rekrut', 200);
       }
       continue;
     }
-    if (!h.anwerben) continue;
+    if (!h.anwerben || g.ausbildung === 'aus') continue;
+    const aus = AUSBILDUNG[g.ausbildung || 'speer'];
     let drin = 0;
     for (const u of z.einheiten) if (u.art === 'soldat' && u.heim === g.id) drin++;
     if (drin >= typ.plaetze) continue;
@@ -248,12 +252,12 @@ function anwerben(z) {
     const satt = vorratReicht(z, g.besitzer, stadtStatus(z, g.besitzer), 1);
     if (!satt) {
       meldung(z, g.besitzer, 'Anwerben pausiert: Der Vorrat reicht nicht bis zur nächsten Ernte.', 'warn', 'rekrutNahrung', 4000);
-    } else if (h.lager.waffen >= a.waffen && h.lager.gold >= a.gold && h.arbeitslos >= 1 && h.bewohner > NIEDERLAGE_BEWOHNER + 2) {
-      h.lager.waffen -= a.waffen; h.lager.gold -= a.gold;
+    } else if (h.lager[aus.waffe] >= 1 && h.lager.gold >= a.gold && h.arbeitslos >= 1 && h.bewohner > NIEDERLAGE_BEWOHNER + 2) {
+      nehmen(z, g.besitzer, aus.waffe, 1, g.x, g.y); nehmen(z, g.besitzer, 'gold', a.gold, g.x, g.y);
       h.bewohner--; h.arbeitslos--;
-      g.anwerbung = 1;
-    } else if (h.lager.waffen < a.waffen) {
-      meldung(z, g.besitzer, 'Anwerben stockt: keine Waffen im Lager (Waffenschmiede + Erz).', 'warn', 'waffen', 4000);
+      g.anwerbung = 1; g.anwerbungTyp = g.ausbildung || 'speer';
+    } else if (h.lager[aus.waffe] < 1) {
+      meldung(z, g.besitzer, aus.waffe === 'speere' ? 'Anwerben stockt: keine Speere (Waffenschmiede braucht Holz + Eisen).' : 'Anwerben stockt: keine Bögen (Waffenschmiede auf Bögen stellen).', 'warn', 'waffen' + aus.waffe, 4000);
     } else if (h.arbeitslos < 1) {
       meldung(z, g.besitzer, 'Anwerben stockt: niemand ohne Arbeit – es braucht mehr Bewohner.', 'warn', 'rekrutLeute', 4000);
     }
@@ -306,15 +310,14 @@ function tagFuerHerr(z, herr, d) {
   const soldaten = st.soldaten;
   // Nahrung: Soldaten zuerst
   const essen = h.bewohner + soldaten;
-  const gegessen = Math.min(h.lager.nahrung, essen);
-  h.lager.nahrung -= gegessen;
+  const mk = z.gebaeude[h.markt] || z.gebaeude[h.burg];
+  const gegessen = nehmen(z, herr, 'nahrung', essen, mk.x, mk.y);
   const nahrung = essen ? Math.floor(gegessen * 100 / essen) : 100;
   const hungernde = Math.max(0, essen - gegessen);
   // Wärme
   const bewohnteHaeuser = Math.min(st.haeuser, Math.ceil(h.bewohner / 5));
   const holzBedarf = Math.ceil(bewohnteHaeuser * BEDARF.brennholzFaktor[d.jahreszeit] / 2);
-  const geheizt = Math.min(h.lager.holz, holzBedarf);
-  h.lager.holz -= geheizt;
+  const geheizt = nehmen(z, herr, 'holz', holzBedarf, mk.x, mk.y);
   const waerme = holzBedarf ? Math.floor(geheizt * 100 / holzBedarf) : 100;
   // Unterkunft
   const wohnen = h.bewohner ? Math.min(100, Math.floor(st.wohnKap * 100 / h.bewohner)) : 100;
@@ -339,18 +342,19 @@ function tagFuerHerr(z, herr, d) {
   // Gold
   const steuer = Math.floor(h.bewohner / STEUER[h.steuer].teiler);
   const sold = Math.ceil(soldaten / MILITAER.soldTeiler);
-  h.lager.gold += steuer - sold;
+  const burgG = z.gebaeude[h.burg];
+  geben(z, herr, burgG, 'gold', steuer);
+  const bezahlt = nehmen(z, herr, 'gold', sold, burgG.x, burgG.y);
   h.gestern = { ...h.heute, steuer, sold, gegessen, geheizt, holzBedarf, essen };
   h.heute = {};
-  if (h.lager.gold < 0) {
-    h.lager.gold = 0;
+  if (bezahlt < sold) {
     const s = z.einheiten.find((u) => u.art === 'soldat' && u.besitzer === herr);
     if (s) { s.hp = 0; s.desertiert = true; h.bewohner++; meldung(z, herr, 'Kein Sold in der Kasse: ein Soldat desertiert.', 'schlecht'); }
   }
   // Bevölkerung
   let weg = 0, neu = 0;
   if (hungernde > 0) {
-    weg += Math.ceil(hungernde / 3);
+    weg += Math.ceil(hungernde / 5);
     meldung(z, herr, `Hunger! ${hungernde} Mäuler blieben leer.`, 'schlecht');
   }
   if (h.laune < ZUZUG.wegzugUnter) weg += 1 + Math.floor((ZUZUG.wegzugUnter - h.laune) / 8);

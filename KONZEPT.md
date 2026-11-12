@@ -30,7 +30,8 @@ Daraus folgt die **Zufriedenheit** (0–100). Ab 50 ziehen Leute zu (wenn Wohnra
 Leute weg, Hunger vertreibt sofort Bewohner. Die Steuer (niedrig/mittel/hoch) verschiebt Gold gegen Laune.
 
 ## Wirtschaft (bewusst einfach)
-Waren: **Nahrung, Holz, Stein, Eisen, Waffen, Gold.** Alles liegt im Speicher am Markt (und in der Burg).
+Waren: **Nahrung, Holz, Stein, Eisen, Speere, Bögen, Gold.** Jede Ware liegt in einem echten Lager (Speicher oder Burg);
+verbraucht wird aus dem nächstgelegenen Lager. Der Herr kann Waren zwischen Lagern umlagern lassen.
 | Gebäude | Zone | Arbeiter | erzeugt |
 |---|---|---|---|
 | Bauernhof + 2–4 Felder | Ackerland | 2 | Nahrung zur Ernte (Ertrag nach Fruchtbarkeit) |
@@ -39,7 +40,7 @@ Waren: **Nahrung, Holz, Stein, Eisen, Waffen, Gold.** Alles liegt im Speicher am
 | Holzfäller (+ Aufforsten) | Forst | 2 | Holz, fällt echte Bäume der Karte |
 | Steinbruch | Bergbau auf Fels | 2 | Stein |
 | Erzgrube | Bergbau auf Erz | 2 | Eisen |
-| Waffenschmiede (Auftrag des Herrn) | frei | 2 | Waffen aus Holz + Eisen |
+| Waffenschmiede (Auftrag des Herrn) | frei | 2 | Speere (Holz + Eisen) oder Bögen (2 Holz), wählbar |
 Waren werden von **Trägern** über die Wege zum Speicher gebracht — weite Wege kosten Zeit.
 Arbeiter werden automatisch verteilt: Nahrung → Holz → Baustellen → Stein → Eisen → Schmiede.
 
@@ -53,7 +54,9 @@ Arbeiter werden automatisch verteilt: Nahrung → Holz → Baustellen → Stein 
 - Militärische Aufträge des Herrn werden zuerst mit Bauleuten besetzt; sie bekommen automatisch einen Weg.
 
 ## Militär
-- **Burg:** 5 Plätze, schießt mit Bogenschützen. **Kaserne:** 10 Plätze, wirbt an (1 Waffe + 8 Gold +
+- **Burg:** 5 Plätze, schießt mit Bogenschützen. Burg und Kaserne bilden wahlweise Speerträger oder Bogenschützen aus.
+- **Führung wie im RTS:** Soldaten auswählen, per Rechtsklick marschieren/halten oder angreifen; sonst verteidigen sie selbstständig.
+- **Kaserne:** 10 Plätze, wirbt an (1 Waffe + 8 Gold +
   1 Bewohner). Für 25 Mann braucht es Burg + 2 Kasernen.
 - **Wachturm:** schießt Pfeile (Reichweite ~6 Kacheln), schützt Häuser in der Nähe (Sicherheit).
 - **Palisade (Holz) / Steinmauer (Stein):** als Linie gezogen; wo sie eine Straße kreuzt, entsteht ein **Tor**.

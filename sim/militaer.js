@@ -14,6 +14,7 @@ import { karteFuer } from './karte.js';
 import { abgeleitet } from './abgeleitet.js';
 import { findePfad, freieLinie } from './pfad.js';
 import { tuer } from './baumeister.js';
+import { nehmen, geben, summieren } from './lager.js';
 import { abstand, abstand2, kachel, kachelMitte, winkelVon, zufall, zufallZwischen, ereignis, meldung, COS, SIN } from './lib.js';
 
 export function soldatenVon(z, herr) {
@@ -23,18 +24,22 @@ export function soldatenVon(z, herr) {
 }
 
 function neueEinheit(z, art, besitzer, x, y) {
-  const k = KAMPF[art];
+  const k = art === 'raeuber' ? KAMPF.raeuber : KAMPF.soldat;
   const u = { id: z.naechsteEinheit++, art, besitzer, x, y, hp: k.hp, hpMax: k.hp, zustand: 'ruhe', ziel: -1, pfad: null, pi: 0, pfadZiel: -1, neuPfad: 0, cd: 0, blick: 90, heim: -1, bande: -1, beuteN: 0, beuteG: 0 };
   z.einheiten.push(u);
   return u;
 }
 
-export function neuerSoldat(z, herr, heim) {
+export function neuerSoldat(z, herr, heim, typ = 'speer') {
   const p = tuer(heim);
   const u = neueEinheit(z, 'soldat', herr, p.x, p.y);
-  u.heim = heim.id;
+  u.heim = heim.id; u.typ = typ; u.befehl = null;
+  const k = kampfwerte(u); u.hp = k.hp; u.hpMax = k.hp;
   return u;
 }
+
+/** Kampfwerte je Einheit (Bogenschützen schießen auf Abstand). */
+export function kampfwerte(u) { return u.art === 'raeuber' ? KAMPF.raeuber : u.typ === 'bogen' ? KAMPF.bogner : KAMPF.soldat; }
 
 /** Bewegt u auf (zx,zy) zu. Gibt 'da', 'unterwegs', 'mauer:<id>' oder 'kein' zurück. */
 function bewegeZu(z, u, zx, zy, modus, tempo) {
@@ -66,10 +71,18 @@ function bewegeZu(z, u, zx, zy, modus, tempo) {
 
 function angreifen(z, u, ziel) {
   if (u.cd > 0) return;
-  const k = KAMPF[u.art];
+  const k = kampfwerte(u);
   u.cd = k.takt;
   u.blick = winkelVon(ziel.x - u.x, ziel.y - u.y);
   ziel.hp -= zufallZwischen(z, k.schaden[0], k.schaden[1]);
+  if (u.typ === 'bogen') ereignis(z, { typ: 'pfeil', vonEinheit: u.id, ax: u.x, ay: u.y, x: ziel.x, y: ziel.y });
+}
+
+/** Kämpft gegen e: Nahkämpfer laufen hin, Bogenschützen schießen aus Reichweite. */
+function kaempfe(z, u, e) {
+  u.zustand = 'kampf';
+  if (abstand(u.x, u.y, e.x, e.y) <= kampfwerte(u).reichweite) angreifen(z, u, e);
+  else bewegeZu(z, u, e.x, e.y, 'buerger', TEMPO.soldat);
 }
 
 function naechster(z, u, art, maxD) {
@@ -98,11 +111,25 @@ function postenVon(z, u) {
 function soldatKI(z, u) {
   const h = z.herren[u.besitzer];
   const burg = z.gebaeude[h.burg];
+  if (u.befehl && u.befehl.typ === 'angriff') {
+    const e = z.einheiten.find((x) => x.id === u.befehl.ziel && x.hp > 0);
+    if (e) { kaempfe(z, u, e); return; }
+    u.befehl = { typ: 'halten', x: u.x, y: u.y };
+  }
+  if (u.befehl) {
+    // Befehl des Herrn: zum Punkt gehen und halten; nur Feinde in der Nähe werden angegriffen.
+    const hb = u.befehl;
+    const e = naechster(z, u, 'raeuber', Math.max(kampfwerte(u).reichweite, 2500));
+    if (e && abstand(e.x, e.y, hb.x, hb.y) < 5000) { kaempfe(z, u, e); return; }
+    if (abstand(u.x, u.y, hb.x, hb.y) > 250) {
+      u.zustand = 'marsch';
+      if (bewegeZu(z, u, hb.x, hb.y, 'buerger', TEMPO.soldat) === 'kein') u.befehl = { typ: 'halten', x: u.x, y: u.y };
+    } else { u.zustand = 'halten'; if (u.hp < u.hpMax && z.tick % 30 === 0) u.hp++; }
+    return;
+  }
   const e = naechster(z, u, 'raeuber', (LAND_RADIUS + 8) * 1000);
   if (e && abstand(e.x, e.y, burg.x, burg.y) <= (LAND_RADIUS + 6) * 1000) {
-    u.zustand = 'kampf';
-    if (abstand(u.x, u.y, e.x, e.y) <= KAMPF.soldat.reichweite) angreifen(z, u, e);
-    else bewegeZu(z, u, e.x, e.y, 'buerger', TEMPO.soldat);
+    kaempfe(z, u, e);
     return;
   }
   const p = postenVon(z, u);
@@ -137,9 +164,9 @@ function pluendern(z, u, g) {
   const h = z.herren[g.besitzer];
   g.hp -= KAMPF.pluenderSchaden;
   h.ueberfallMalus = BEDARF.ueberfallMalus;
-  if (g.art === 'speicher') { const n = Math.min(4, h.lager.nahrung); h.lager.nahrung -= n; u.beuteN += n; const gd = Math.min(2, h.lager.gold); h.lager.gold -= gd; u.beuteG += gd; }
+  if (g.art === 'speicher') { const n = Math.min(4, g.inhalt.nahrung); g.inhalt.nahrung -= n; u.beuteN += n; const gd = Math.min(2, g.inhalt.gold); g.inhalt.gold -= gd; u.beuteG += gd; summieren(z, g.besitzer); }
   else if (g.puffer > 0) { const n = Math.min(3, g.puffer); g.puffer -= n; if (GEBAEUDE[g.art].ware === 'nahrung') u.beuteN += n; else u.beuteG += 1; }
-  else if (g.art === 'haus') { const gd = Math.min(1, h.lager.gold); h.lager.gold -= gd; u.beuteG += gd + 1; }
+  else if (g.art === 'haus') { const gd = nehmen(z, g.besitzer, 'gold', 1, g.x, g.y); u.beuteG += gd + 1; }
   else u.beuteG += 1;
   if (g.hp <= 0) gebaeudeZerstoert(z, g);
 }
@@ -149,6 +176,10 @@ export function gebaeudeZerstoert(z, g) {
   g.zustand = 'weg'; g.hp = 0;
   for (const id of g.felder) z.felder[id].weg = true;
   z.version++;
+  if (typ.lager) {
+    summieren(z, g.besitzer);
+    if (g.inhalt && Object.values(g.inhalt).some((v) => v > 0)) meldung(z, g.besitzer, `Die Vorräte in ${typ.name} sind verbrannt!`, 'schlecht');
+  }
   z.ruinen.push({ x: g.x, y: g.y, b: g.b, t: g.t, w: g.w, tick: z.tick, mauer: !!typ.mauer });
   if (z.ruinen.length > 40) z.ruinen.shift();
   meldung(z, g.besitzer, typ.mauer ? `Räuber haben ein Stück ${typ.name} eingerissen!` : `${typ.name} wurde niedergebrannt!`, 'schlecht', typ.mauer ? 'mauerweg' : null, 300);
@@ -269,7 +300,7 @@ export function militaerTick(z) {
       const bande = z.banden[u.bande];
       if (!u.abgezogen) {
         const h = z.herren[bande.herr];
-        h.lager.nahrung += u.beuteN; h.lager.gold += u.beuteG;
+        geben(z, bande.herr, null, 'nahrung', u.beuteN, u.x, u.y); geben(z, bande.herr, null, 'gold', u.beuteG, u.x, u.y);
         bande.beuteZurueck += u.beuteN + u.beuteG;
         ereignis(z, { typ: 'tot', art: 'raeuber', x: u.x, y: u.y, blick: u.blick });
       }

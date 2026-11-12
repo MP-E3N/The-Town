@@ -11,15 +11,17 @@ import { GEBAEUDE } from '../data/gebaeude.js';
 import { karteFuer } from './karte.js';
 import { abgeleitet } from './abgeleitet.js';
 import { findePfad } from './pfad.js';
-import { strasseHinzufuegen, punkteAusPfad } from './strassen.js';
-import { gebaeudeAnlegen, findePlatz, planeGasse, tuer, tuerKachel } from './baumeister.js';
+import { strasseHinzufuegen } from './strassen.js';
+import { begradigen } from './stadtplaner.js';
+import { gebaeudeAnlegen, findePlatz, planeGasse, tuer, tuerKachel, pruefePlatz } from './baumeister.js';
 import { neuerSoldat } from './militaer.js';
 import { arbeitVerteilen } from './wirtschaft.js';
-import { winkelVon, wnorm, kachel, abstand } from './lib.js';
+import { leer, summieren } from './lager.js';
+import { winkelVon, wnorm, kachel, abstand, lokal, SIN, COS } from './lib.js';
 
 function neuerHerr(id, name) {
   return {
-    id, name, burg: -1, markt: -1, lager: { ...START.lager }, bewohner: START.bewohner, laune: START.laune,
+    id, name, burg: -1, markt: -1, lager: leer(), bewohner: START.bewohner, laune: START.laune,
     steuer: 1, anwerben: true, arbeitslos: 0, beduerfnisse: { nahrung: 100, wohnen: 100, waerme: 100, sicherheit: 50 },
     ueberfallMalus: 0, sammelpunkt: null, satteTage: 0, heute: {}, gestern: {}, chronik: [], meldeSperre: {}, planLog: [],
   };
@@ -65,6 +67,39 @@ function randZiel(k, links, y0) {
   return y0 * KARTE_B + x;
 }
 
+/**
+ * Marktplatz als „Straßenmarkt“: länglich entlang der Handelsstraße. Rathaus mit offener Halle an der
+ * Längsseite (Front zum Platz), Kirche in Sichtweite — wie in vielen Gründungsstädten des Hochmittelalters.
+ */
+function marktAnlegen(z, k, platz, burg, handel) {
+  if (handel.length === 2) {
+    const a = handel[0][Math.min(5, handel[0].length - 1)], b = handel[1][Math.min(5, handel[1].length - 1)];
+    platz.w = winkelVon((b % KARTE_B) - (a % KARTE_B), Math.floor(b / KARTE_B) - Math.floor(a / KARTE_B));
+    z.version++;
+  }
+  // Rathaus auf der Längsseite, die der Burg abgewandt ist
+  const vx = -SIN[platz.w], vy = COS[platz.w];
+  const burgSeite = (burg.x - platz.x) * vx + (burg.y - platz.y) * vy > 0 ? 1 : -1;
+  const seite = -burgSeite;
+  const r = GEBAEUDE.rathaus;
+  for (const lu of [0, -1500, 1500, -2500, 2500]) {
+    const lv = seite * (Math.floor(platz.t / 2) + Math.floor(r.t / 2) + 150);
+    const p = lokal(platz, lu, lv);
+    const o = { x: p.x, y: p.y, b: r.b, t: r.t, w: wnorm(seite > 0 ? platz.w : platz.w + 180) };
+    if (!pruefePlatz(z, 0, o, { steilMax: 120, strRand: 40, rand: 60 })) { gebaeudeAnlegen(z, 0, 'rathaus', o, { sofort: true, keinWeg: true }); break; }
+  }
+  // Kirche: geostet (Chor im Osten), nahe am Platz
+  const kt = GEBAEUDE.kirche;
+  let kirche = null;
+  for (let rr = 4500; rr <= 11000 && !kirche; rr += 700) {
+    for (let w = 0; w < 360 && !kirche; w += 30) {
+      const o = { x: platz.x + Math.trunc(COS[w] * rr / 1024), y: platz.y + Math.trunc(SIN[w] * rr / 1024), b: kt.b, t: kt.t, w: 270 };
+      if (!pruefePlatz(z, 0, o, { steilMax: 90, strRand: 150, rand: 300 })) kirche = o;
+    }
+  }
+  if (kirche) gebaeudeAnlegen(z, 0, 'kirche', kirche, { sofort: true });
+}
+
 export function erzeugeZustand(seed) {
   const k = karteFuer(seed);
   const z = {
@@ -84,15 +119,17 @@ export function erzeugeZustand(seed) {
   // Burgweg und Handelsstraße (über den Fluss: Brücke)
   const mk = kachel(k.markt.x, k.markt.y);
   const p1 = findePfad(z, tuerKachel(burg), mk, 'bau');
-  if (p1) strasseHinzufuegen(z, punkteAusPfad(p1, tuer(burg), null), 'haupt');
+  if (p1) strasseHinzufuegen(z, begradigen(z, p1, tuer(burg), null), 'haupt');
   const my = Math.floor(k.markt.y / 1000);
+  const handel = [];
   for (const links of [true, false]) {
     const p = findePfad(z, mk, randZiel(k, links, my), 'bau');
-    if (p) strasseHinzufuegen(z, punkteAusPfad(p, null, null), 'haupt');
+    if (p) { strasseHinzufuegen(z, begradigen(z, p, null, null), 'haupt'); handel.push(p); }
   }
+  marktAnlegen(z, k, platz, burg, handel);
   // Erste Zonen
   const mx = Math.floor(k.markt.x / 1000);
-  zoneKreis(z, k, burg, mx, my, 8, 1, 45);
+  zoneKreis(z, k, burg, mx, my, 10, 1, 50);
   const acker = bestesGebiet(z, k, burg, k.markt, 9, 22, (i) => (k.wasser[i] || k.steil[i] > 40 || z.wald[i] >= 50 || z.zone[i]) ? -40 : k.frucht[i]);
   if (acker) zoneKreis(z, k, burg, acker.tx, acker.ty, 7, 2, 50);
   const forst = bestesGebiet(z, k, burg, k.markt, 7, 20, (i) => (z.zone[i] ? -50 : z.wald[i]));
@@ -106,15 +143,25 @@ export function erzeugeZustand(seed) {
       let p = findePlatz(z, 0, art);
       for (let v = 0; v < 6 && !p; v++) { if (!planeGasse(z, 0, GEBAEUDE[art].zone)) break; p = findePlatz(z, 0, art); }
       if (!p) break;
-      gebaeudeAnlegen(z, 0, art, p.o, { sofort: true, felder: p.felder });
+      gebaeudeAnlegen(z, 0, art, p.o, { sofort: true, felder: p.felder, wohn: p.wohn });
     }
   };
   setze('hof', START.hoefe);
   setze('holzfaeller', START.holzfaeller);
-  setze('haus', START.haeuser);
+  // Häuser, bis alle Startbewohner ein Dach haben (Bürgerhäuser am Markt fassen mehr)
+  for (let n = 0; n < 10; n++) {
+    const kap = z.gebaeude.reduce((a, g) => a + (g.art === 'haus' ? g.wohn || 5 : 0), 0);
+    if (kap >= START.bewohner + 4 && n >= START.haeuser - 1) break;
+    setze('haus', 1);
+  }
   for (let i = 0; i < START.soldaten; i++) neuerSoldat(z, 0, burg);
-  // Startlager wieder auf den Sollwert (Rodung beim Aufbau zählt nicht)
-  h.lager = { ...START.lager };
+  // Startlager setzen (Rodung beim Aufbau zählt nicht): Burg und erster Speicher getrennt.
+  for (const g of z.gebaeude) if (g.inhalt) g.inhalt = leer();
+  burg.inhalt = { ...START.burg };
+  const speicher = z.gebaeude.find((g) => g.art === 'speicher');
+  const ziel = speicher || burg;
+  for (const w in START.speicher) ziel.inhalt[w] += START.speicher[w];
+  summieren(z, 0);
   abgeleitet(z);
   arbeitVerteilen(z, 0);
   return z;

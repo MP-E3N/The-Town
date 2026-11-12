@@ -33,5 +33,8 @@ Gleicher Unterbau wie die Schwesterprojekte `..\Stadtwacht`, `..\Kronwege`, `..\
 ## Kommentare
 Deutsch. Dateikopf mit ZWECK / LIEST / SCHREIBT / REGEL (/ DEBUG). Nicht Offensichtliches mit **WARUM**.
 
+## Skills
+- `.claude/skills/stadtplaner` — für alles rund um Straßen, Gassen, Bauplätze, Markt, Dichte. Lernbuch pflegen.
+
 ## Commits
-Kein Git-Repo angelegt. Commits nur nach Freigabe des Nutzers; Deutsch, Präsens.
+Git-Repo, origin = github.com/MP-E3N/The-Town. Deutsch, Präsens.

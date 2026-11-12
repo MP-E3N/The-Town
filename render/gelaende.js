@@ -50,6 +50,7 @@ export function erzeugeGelaende(seed) {
     const hx = hoehe[j * GW + Math.min(GW - 1, i + 1)] - hoehe[j * GW + Math.max(0, i - 1)];
     const hy = hoehe[Math.min(GH - 1, j + 1) * GW + i] - hoehe[Math.max(0, j - 1) * GW + i];
     schatten[k] = Math.max(0.68, Math.min(1.3, 1 - (hx + hy) * 9));
+    farbe[k * 3] *= schatten[k]; farbe[k * 3 + 1] *= schatten[k]; farbe[k * 3 + 2] *= schatten[k];
   }
   // Körnung (weltfest)
   const korn = new Float32Array(64 * 64);
@@ -67,8 +68,8 @@ function zeichneBereich(gr, tx0, ty0, tw, th, ppt) {
   cv.width = cw; cv.height = ch;
   const ctx = cv.getContext('2d');
   const img = ctx.createImageData(cw, ch);
-  const d = img.data;
-  const { GW, GH, hoehe, farbe, schatten, korn } = gr;
+  const d32 = new Uint32Array(img.data.buffer);
+  const { GW, GH, hoehe, farbe, korn } = gr;
   const s = R / ppt;
   for (let py = 0; py < ch; py++) {
     const gy = (ty0 * ppt + py + 0.5) * s;
@@ -79,7 +80,6 @@ function zeichneBereich(gr, tx0, ty0, tw, th, ppt) {
       const k00 = j0 * GW + i0, k10 = k00 + 1, k01 = k00 + GW, k11 = k01 + 1;
       const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
       const h = hoehe[k00] * w00 + hoehe[k10] * w10 + hoehe[k01] * w01 + hoehe[k11] * w11;
-      const sh = schatten[k00] * w00 + schatten[k10] * w10 + schatten[k01] * w01 + schatten[k11] * w11;
       const kn = korn[(((tx0 * ppt + px) & 63) + (((ty0 * ppt + py) & 63) << 6))];
       let r, g, b;
       if (h < W) {
@@ -93,11 +93,11 @@ function zeichneBereich(gr, tx0, ty0, tw, th, ppt) {
         g = farbe[k00 * 3 + 1] * w00 + farbe[k10 * 3 + 1] * w10 + farbe[k01 * 3 + 1] * w01 + farbe[k11 * 3 + 1] * w11;
         b = farbe[k00 * 3 + 2] * w00 + farbe[k10 * 3 + 2] * w10 + farbe[k01 * 3 + 2] * w01 + farbe[k11 * 3 + 2] * w11;
         if (h < W + 0.014) { const u = 1 - (h - W) / 0.014; r = mische(r, 182, u); g = mische(g, 168, u); b = mische(b, 120, u); }
-        const k = sh * (1 + kn);
+        const k = 1 + kn;
         r *= k; g *= k; b *= k;
       }
-      const o = (py * cw + px) * 4;
-      d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+      const ri = r < 0 ? 0 : r > 255 ? 255 : r | 0, gi = g < 0 ? 0 : g > 255 ? 255 : g | 0, bi = b < 0 ? 0 : b > 255 ? 255 : b | 0;
+      d32[py * cw + px] = 0xff000000 | (bi << 16) | (gi << 8) | ri;
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -105,7 +105,7 @@ function zeichneBereich(gr, tx0, ty0, tw, th, ppt) {
 }
 
 /** Zeichnet das Gelände für die Kamera. budget = wie viele neue Chunks dieses Bild höchstens. */
-export function zeichneGelaende(ctx, gr, kam, budget = 2) {
+export function zeichneGelaende(ctx, gr, kam, budget = 1) {
   const z = kam.zoom;
   ctx.imageSmoothingEnabled = true;
   // Grundbild immer (deckt Lücken, solange Chunks fehlen)
@@ -145,4 +145,23 @@ export function zeichneGelaende(ctx, gr, kam, budget = 2) {
 export function hoeheBei(gr, x, y) {
   const i = Math.max(0, Math.min(gr.GW - 1, Math.round(x * R))), j = Math.max(0, Math.min(gr.GH - 1, Math.round(y * R)));
   return gr.hoehe[j * gr.GW + i];
+}
+
+/** Grob-Chunks (24 px/Kachel) im Leerlauf vorberechnen, nahe der Mitte zuerst → kein Ruckeln beim Zoomen. */
+export function vorrendern(gr, mx, my) {
+  const st = STUFEN[0], cache = gr.chunks[0];
+  const liste = [];
+  for (let cy = 0; cy < KARTE_H / CHUNK; cy++) for (let cx = 0; cx < KARTE_B / CHUNK; cx++) liste.push([cx, cy, (cx * CHUNK - mx) ** 2 + (cy * CHUNK - my) ** 2]);
+  liste.sort((a, b) => a[2] - b[2]);
+  let i = 0;
+  const schritt = () => {
+    const ende = performance.now() + 6;
+    while (i < liste.length && performance.now() < ende) {
+      const [cx, cy] = liste[i++];
+      const key = cy * 100 + cx;
+      if (!cache.has(key)) cache.set(key, { cv: zeichneBereich(gr, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK, st.ppt), t: 0 });
+    }
+    if (i < liste.length) setTimeout(schritt, 30);
+  };
+  setTimeout(schritt, 300);
 }

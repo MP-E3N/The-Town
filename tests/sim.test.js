@@ -36,13 +36,13 @@ function lauf(seed, bot, tage) {
   const z = erzeugeZustand(42);
   const st = stadtStatus(z, 0);
   pruefe('Start: Burg, Markt, Speicher', z.gebaeude[0].art === 'burg' && z.gebaeude[1].art === 'platz' && (st.anzahl.speicher || 0) >= 1);
-  pruefe('Start: Häuser ≥ 5, Höfe ≥ 2, Holzfäller', st.haeuser >= 5 && (st.anzahl.hof || 0) >= 2 && (st.anzahl.holzfaeller || 0) >= 1, JSON.stringify(st.anzahl));
+  pruefe('Start: Wohnplätze für alle, Höfe ≥ 2, Holzfäller', st.wohnKap >= z.herren[0].bewohner && (st.anzahl.hof || 0) >= 2 && (st.anzahl.holzfaeller || 0) >= 1, JSON.stringify(st.anzahl));
   pruefe('Start: Straßen mit Brücke', z.strassen.length >= 3);
   pruefe('Start: 3 Soldaten', st.soldaten === 3);
   pruefe('Start: Felder', z.felder.length >= 4);
   for (const seed of [1, 7, 99, 1234, 5555]) {
     const zz = erzeugeZustand(seed), s2 = stadtStatus(zz, 0);
-    pruefe(`Start Seed ${seed}`, s2.haeuser >= 4 && (s2.anzahl.hof || 0) >= 1, `Häuser ${s2.haeuser}, Höfe ${s2.anzahl.hof || 0}`);
+    pruefe(`Start Seed ${seed}`, s2.wohnKap >= zz.herren[0].bewohner && (s2.anzahl.hof || 0) >= 1, `Häuser ${s2.haeuser} (${s2.wohnKap} Plätze), Höfe ${s2.anzahl.hof || 0}`);
   }
 }
 
@@ -66,6 +66,32 @@ function lauf(seed, bot, tage) {
   befehlAnwenden(z, { typ: 'bauen', art: 'kaserne', x: -5, y: 'quatsch', w: 0, spieler: 0 });
   befehlAnwenden(z, { typ: 'abreissen', id: 0, spieler: 0 });
   pruefe('Unerlaubte Befehle ändern nichts', z.gebaeude.length === vorher && z.gebaeude[0].zustand === 'fertig');
+}
+
+// 3b) Lager, Umlagern, Soldaten führen, Produktion wählen
+{
+  const z = erzeugeZustand(42);
+  const burg = z.gebaeude[z.herren[0].burg], sp = z.gebaeude.find((g) => g.art === 'speicher');
+  const vorher = burg.inhalt.holz;
+  befehlAnwenden(z, { typ: 'transfer', von: sp.id, nach: burg.id, ware: 'holz', menge: 30, spieler: 0 });
+  pruefe('Umlagern: Ware verlässt den Speicher sofort', sp.inhalt.holz === 40 && z.lieferungen.filter((l) => l.umlagern).length === 2);
+  // Nur die Umlager-Träger zählen (Baustellen dürfen in der Zeit Holz aus der Burg nehmen)
+  let angekommen = 0;
+  for (let i = 0; i < 900; i++) {
+    tick(z, []);
+    for (const e of z.lieferungen) if (e.umlagern && e.angekommen && !e.gezaehlt) { e.gezaehlt = true; angekommen += e.menge; }
+  }
+  pruefe('Umlagern: Ware kommt in der Burg an', angekommen === 30 && burg.inhalt.holz >= vorher, `angekommen ${angekommen}, Burg-Holz ${burg.inhalt.holz}`);
+  const ids = z.einheiten.filter((u) => u.art === 'soldat').map((u) => u.id);
+  const ziel = { x: burg.x + 9000, y: burg.y + 9000 };
+  befehlAnwenden(z, { typ: 'einheiten', ids, aktion: 'gehe', x: ziel.x, y: ziel.y, spieler: 0 });
+  for (let i = 0; i < 400; i++) tick(z, []);
+  const da = z.einheiten.filter((u) => ids.includes(u.id) && Math.hypot(u.x - ziel.x, u.y - ziel.y) < 2500).length;
+  pruefe('Soldaten marschieren zum befohlenen Punkt', da === ids.length, `${da}/${ids.length}`);
+  befehlAnwenden(z, { typ: 'einheiten', ids, aktion: 'frei', spieler: 0 });
+  pruefe('Soldaten wieder auf eigene Faust', z.einheiten.filter((u) => ids.includes(u.id)).every((u) => !u.befehl));
+  befehlAnwenden(z, { typ: 'ausbildung', id: burg.id, art: 'bogen', spieler: 0 });
+  pruefe('Burg bildet Bogenschützen aus', burg.ausbildung === 'bogen');
 }
 
 // 4) Überfall: Garnison wehrt eine kleine Bande ab

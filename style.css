@@ -86,3 +86,9 @@ h3 { font: 13px Georgia, serif; color: var(--gold); margin: 10px 0 4px; }
 .karte-papier .unter { margin: 0 0 12px; color: #6a5030; font-style: italic; }
 .karte-papier li { margin: 4px 0; }
 .karte-papier button { background: #6a4a24; color: #fff; padding: 8px 18px; font-size: 15px; margin-top: 8px; }
+
+#info .inhalt { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 6px 0 2px; }
+#tipp .inhalt { display: grid; grid-template-columns: repeat(4, auto); gap: 2px 10px; margin-top: 3px; }
+.wahl { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; color: var(--text2); font-size: 12px; }
+.wahl button { padding: 2px 7px; font-size: 12px; }
+.wahl select { background: #2a2219; color: var(--text); border: 1px solid var(--rand); border-radius: 4px; font: inherit; padding: 2px; }

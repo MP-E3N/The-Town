@@ -28,8 +28,10 @@ export const START = {
   bewohner: 30,
   soldaten: 3,
   laune: 70,
-  lager: { nahrung: 340, holz: 70, stein: 25, eisen: 0, waffen: 4, gold: 160 },
-  haeuser: 6, hoefe: 2, holzfaeller: 1,
+  /** Startbestände: die Burg hat ihr eigenes Lager (Schatzkammer, Rüstkammer). */
+  burg: { nahrung: 60, holz: 0, stein: 0, eisen: 0, speere: 4, boegen: 2, gold: 160 },
+  speicher: { nahrung: 280, holz: 70, stein: 25, eisen: 0, speere: 0, boegen: 0, gold: 0 },
+  haeuser: 5, hoefe: 2, holzfaeller: 1,
 };
 
 export const BEDARF = {
@@ -55,7 +57,7 @@ export const ZUZUG = { abLaune: 50, wegzugUnter: 35, maxProTag: 5 };
 /** Sold pro Tag = ceil(Soldaten / soldTeiler). */
 export const MILITAER = {
   soldTeiler: 3,
-  anwerben: { gold: 8, waffen: 1, ticks: 300 },
+  anwerben: { gold: 8, ticks: 300 },
   burgPlaetze: 5,
 };
 
@@ -85,6 +87,7 @@ export const TEMPO = { traeger: 140, soldat: 150, raeuber: 110 };
 export const KAMPF = {
   soldat: { hp: 100, schaden: [9, 15], takt: 10, reichweite: 1100 },
   raeuber: { hp: 70, schaden: [6, 11], takt: 11, reichweite: 1100 },
+  bogner: { hp: 70, schaden: [7, 11], takt: 16, reichweite: 4500 },
   turm: { schaden: 12, takt: 14, reichweite: 6500 },
   burg: { schaden: 12, takt: 12, reichweite: 7500 },
   mauerSchaden: 8,

@@ -1,9 +1,26 @@
 # HANDOFF — Lehnsherr von Eschenbrück
 
-## Stand (2026-11-12): spielbare Demo, vom Nutzer noch nicht gespielt
+## Stand (2026-11-12): Runde 2 nach erstem Spieltest (Git: github.com/MP-E3N/The-Town)
+
+### Neu in Runde 2 (Nutzerwünsche nach dem ersten Spieltest)
+- **Performance:** Bäume + Gras in vorgezeichneten Chunks (`render/deko.js`), Gelände-Chunks im Leerlauf vorberechnet,
+  schnellerer Pixel-Renderer, DPR max. 1,5, weniger Rauch. 1920×1080: Zoom 14 von 62 → 5 ms, Zoom 20 von 39 → 4 ms.
+- **Stadtplaner** (`sim/stadtplaner.js` + Skill `.claude/skills/stadtplaner` mit LERNBUCH): Straßen begradigt
+  (gerade Strecken, Bögen, Hang-Grenze), Wohngassen als T-Abzweig mit Blocktiefe und Anschluss, keine Stichwege im
+  Wohnland, dichte Zeilenbebauung, Bürgerhäuser (8 Plätze) im Kern, Häuser mit Front zum Markt. Messwerkzeug `tools/stadtplan.mjs`.
+- **Marktplatz neu:** länglicher Straßenmarkt entlang der Handelsstraße, Pflaster, Stände mit Markisen und Waren,
+  Marktbrunnen, Marktkreuz, Viehgatter, Händler + Käufer (Optik); **Rathaus** mit Laubengang und Dachreiter, **Kirche** geostet.
+- **Lager:** Waren liegen wirklich in Speicher und Burg (`sim/lager.js`); Entnahme vom nächsten Lager; Speicher
+  brennt → Inhalt weg. Maus über Lager = Inhalt; Lager anklicken = **Umlagern** (Träger laufen, Befehl `transfer`).
+- **Militär:** Speerträger und **Bogenschützen** (schießen auf Abstand); Burg/Kaserne: Ausbildung wählen
+  (Speer/Bogen/niemand); Schmiede: Speere (Holz+Eisen) oder Bögen (2 Holz). **RTS-Steuerung:** Rahmen ziehen/anklicken,
+  Rechtsklick = marschieren+halten bzw. angreifen, G = alle, F = auf eigene Faust, Doppelklick = alle dieser Art.
+- Steuerung geändert: Karte verschieben mit rechter/mittlerer Taste ziehen oder WASD (linke Taste = Auswahlrahmen).
+
+## Stand Runde 1 (2026-11-12)
 Starten: Vorschau „lehnsherr" (Port 5178) oder
 `powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr` → http://localhost:5178
-Feste Karte: `?seed=42`. Tests: `node tests/sim.test.js` (≈ 5 s, ALLES GRUEN). Kein Git-Repo.
+Feste Karte: `?seed=42`. Tests: `node tests/sim.test.js` (≈ 6 s, ALLES GRUEN). Git: origin = github.com/MP-E3N/The-Town.
 
 ### Enthalten
 - Karte 128×96 aus stetigen Rauschfunktionen: Fluss Ilmbach mit Uferböschung, Burghügel, Erz- und Steinhügel,
