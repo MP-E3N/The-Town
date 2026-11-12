@@ -10,8 +10,8 @@ import { KARTE_B } from '../data/werte.js';
 import { GEBAEUDE } from '../data/gebaeude.js';
 import { abgeleitet } from './abgeleitet.js';
 import { findePfad } from './pfad.js';
-import { kachel, abstandStrecke } from './lib.js';
-import { begradigen } from './stadtplaner.js';
+import { kachel, abstand, abstandStrecke, COS, SIN } from './lib.js';
+import { begradigen, nurNeuerTeil } from './stadtplaner.js';
 
 export const BREITE = { haupt: 950, gasse: 700, weg: 560 };
 
@@ -53,23 +53,58 @@ export function strasseHinzufuegen(z, punkte, art) {
   return s;
 }
 
-/** Mauerstücke, die eine Straße berühren, werden zu Toren. */
+/**
+ * Wo eine Mauer eine Straße kreuzt, entsteht ein Torhaus: das Mauerstück, das der Straße am nächsten liegt,
+ * wird zum Tor (breiter, mit zwei Flankentürmen). Nachbarstücke an derselben Kreuzung bleiben Mauer —
+ * der Durchgang des Torhauses überdeckt sie (siehe abgeleitet.js: Tore werden zuletzt gerastert).
+ */
 export function toreSetzen(z) {
-  let geaendert = false;
+  const kandidaten = [];
   for (const g of z.gebaeude) {
     if (g.zustand === 'weg' || !GEBAEUDE[g.art].mauer || g.art === 'tor') continue;
-    if (mauerKreuztStrasse(z, g)) { g.art = 'tor'; g.hpMax = GEBAEUDE.tor.hp; g.hp = Math.min(g.hp, g.hpMax); if (g.zustand === 'fertig') g.hp = g.hpMax; geaendert = true; }
+    const d = mauerKreuztStrasse(z, g);
+    if (d >= 0) kandidaten.push({ g, d });
+  }
+  if (!kandidaten.length) return;
+  kandidaten.sort((a, b) => a.d - b.d || a.g.id - b.g.id);
+  let geaendert = false;
+  for (const { g } of kandidaten) {
+    const nahTor = z.gebaeude.some((t) => t.art === 'tor' && t.zustand !== 'weg' && abstand(t.x, t.y, g.x, g.y) < 2300);
+    if (nahTor) continue;
+    g.material = g.art;
+    g.art = 'tor';
+    g.b = Math.max(g.b, GEBAEUDE.tor.b); g.t = GEBAEUDE.tor.t;
+    g.hpMax = g.material === 'mauer' ? GEBAEUDE.tor.hpStein : GEBAEUDE.tor.hp;
+    g.hp = g.zustand === 'fertig' ? g.hpMax : Math.min(g.hp, g.hpMax);
+    geaendert = true;
   }
   if (geaendert) z.version++;
 }
 
-export function mauerKreuztStrasse(z, g) {
+/**
+ * Abstand der Mauer-Mitte zur nächsten Straße, die sie QUER kreuzt (≥ 40°), sonst −1.
+ * Mit laengs=true: −1 oder Abstand einer Straße, die (fast) parallel unter der Mauer verläuft.
+ * WARUM der Winkel: Eine Mauer, die einen Weg entlangläuft, hat dort kein Tor — sie steht auf dem Weg.
+ */
+export function mauerKreuztStrasse(z, g, laengs = false) {
   const c = abgeleitet(z);
+  const hl = Math.trunc(g.b / 2), cw = COS[g.w], sw = SIN[g.w];
+  let best = -1;
   for (const s of c.segmente) {
     if (g.x + g.b < s.x0 || g.x - g.b > s.x1 || g.y + g.b < s.y0 || g.y - g.b > s.y1) continue;
-    if (abstandStrecke(g.x, g.y, s.ax, s.ay, s.bx, s.by) < s.hb + 350) return true;
+    const dx = s.bx - s.ax, dy = s.by - s.ay, l = Math.floor(Math.sqrt(dx * dx + dy * dy)) || 1;
+    const parallel = Math.abs(dx * cw + dy * sw) * 100 > l * 1024 * 77; // |cos| > 0,77 ≈ unter 40°
+    if (parallel !== laengs) continue;
+    for (let st = -4; st <= 4; st++) {
+      const px = g.x + Math.trunc(cw * hl * st / 4 / 1024), py = g.y + Math.trunc(sw * hl * st / 4 / 1024);
+      if (abstandStrecke(px, py, s.ax, s.ay, s.bx, s.by) < s.hb + (laengs ? 0 : 150)) {
+        const d = abstandStrecke(g.x, g.y, s.ax, s.ay, s.bx, s.by);
+        if (best < 0 || d < best) best = d;
+        break;
+      }
+    }
   }
-  return false;
+  return best;
 }
 
 /** Verbindet die Tür eines Gebäudes mit dem nächsten Weg, falls keiner nah ist. */

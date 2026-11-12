@@ -28,9 +28,41 @@ import { tuerKachel } from './baumeister.js';
 import { summieren } from './lager.js';
 import { karteFuer } from './karte.js';
 import { pruefePlatz, gebaeudeAnlegen, bezahlen } from './baumeister.js';
-import { toreSetzen } from './strassen.js';
+import { toreSetzen, mauerKreuztStrasse } from './strassen.js';
 import { geben } from './lager.js';
-import { abstand, winkelVon, wnorm, meldung, SIN, COS } from './lib.js';
+import { abstand, winkelVon, wnorm, meldung, lokal, SIN, COS } from './lib.js';
+
+/** Enden eines Mauerstücks (Rasterpunkte); Türme haben ihren Mittelpunkt als Knoten. */
+export function mauerEnden(g) {
+  if (g.art === 'turm') return [g.x, g.y, g.x, g.y];
+  if (g.ende) return g.ende;
+  const a = lokal(g, -Math.trunc(g.b / 2), 0), b = lokal(g, Math.trunc(g.b / 2), 0);
+  return [a.x, a.y, b.x, b.y];
+}
+
+/**
+ * Stellungen für n Soldaten: Breitensuche über zusammenhängende Mauerstücke (Enden ≤ 0,6 Kacheln voneinander,
+ * Türme ≤ 1 Kachel), je Stück zwei Plätze, auf Türmen und Torhäusern auf den Türmen.
+ */
+export function mauerPlaetze(z, start, n) {
+  const istWehr = (g) => g.zustand === 'fertig' && g.besitzer === start.besitzer && (GEBAEUDE[g.art].mauer || g.art === 'turm');
+  const reihe = [start], gesehen = new Set([start.id]), out = [];
+  for (let qi = 0; qi < reihe.length && out.length < n; qi++) {
+    const g = reihe[qi];
+    if (g.art === 'turm') for (const [lu, lv] of [[0, 0], [-300, 250], [300, 250]]) { const p = lokal(g, lu, lv); out.push({ id: g.id, x: p.x, y: p.y }); }
+    else if (g.art === 'tor') for (const sd of [-1, 1]) { const p = lokal(g, sd * (Math.trunc(g.b / 2) - 450), 0); out.push({ id: g.id, x: p.x, y: p.y }); }
+    else for (const sd of [-1, 1]) { const p = lokal(g, sd * Math.trunc(g.b / 4), 0); out.push({ id: g.id, x: p.x, y: p.y }); }
+    const e = mauerEnden(g);
+    for (const h of z.gebaeude) {
+      if (gesehen.has(h.id) || !istWehr(h)) continue;
+      const f = mauerEnden(h), r = (g.art === 'turm' || h.art === 'turm') ? 1100 : 650;
+      let nah = false;
+      for (let i = 0; i < 4 && !nah; i += 2) for (let j = 0; j < 4; j += 2) if (abstand(e[i], e[i + 1], f[j], f[j + 1]) <= r) { nah = true; break; }
+      if (nah) { gesehen.add(h.id); reihe.push(h); }
+    }
+  }
+  return out.length ? out : [{ id: start.id, x: start.x, y: start.y }];
+}
 
 export const AUFTRAEGE = ['kaserne', 'turm', 'schmiede', 'speicher'];
 
@@ -46,7 +78,8 @@ export function fehlendeKosten(h, art) {
 /** Prüft einen Auftrag (für Vorschau und Befehl). null = möglich. */
 export function auftragPruefen(z, herr, art, o) {
   if (!AUFTRAEGE.includes(art)) return 'unbekannt';
-  const grund = pruefePlatz(z, herr, o, { strRand: 80, steilMax: Math.max(80, Math.floor(Math.max(o.b, o.t) / 30)) });
+  // Türme dürfen auf Mauerknoten sitzen (die Mauer läuft in den Turm hinein).
+  const grund = pruefePlatz(z, herr, o, { strRand: 80, steilMax: Math.max(80, Math.floor(Math.max(o.b, o.t) / 30)), mauerOk: art === 'turm' });
   if (grund) return grund;
   const fehlt = fehlendeKosten(z.herren[herr], art);
   if (fehlt.length) return 'zu wenig ' + fehlt.join(', ');
@@ -99,9 +132,12 @@ export function befehlAnwenden(z, b) {
         const x = ax + Math.trunc((bx - ax) * (2 * i + 1) / (2 * n)), y = ay + Math.trunc((by - ay) * (2 * i + 1) / (2 * n));
         const o = { x, y, b: Math.floor(len / n) + 80, t: typ.t, w };
         if (pruefePlatz(z, herr, o, { mauer: true, keineStrasse: false, steilMax: 150, felsOk: true })) { ausgelassen++; continue; }
+        if (mauerKreuztStrasse(z, o, true) >= 0) { ausgelassen++; continue; } // nicht längs auf einem Weg
         if (fehlendeKosten(h, art).length) { geld++; continue; }
         bezahlen(z, herr, art, o.x, o.y);
-        gebaeudeAnlegen(z, herr, art, o, { auftrag: true, keinWeg: true });
+        const g = gebaeudeAnlegen(z, herr, art, o, { auftrag: true, keinWeg: true });
+        // Rasterpunkte: genaue Enden jedes Stücks, damit neue Mauern und Türme exakt ansetzen können
+        g.ende = [ax + Math.trunc((bx - ax) * i / n), ay + Math.trunc((by - ay) * i / n), ax + Math.trunc((bx - ax) * (i + 1) / n), ay + Math.trunc((by - ay) * (i + 1) / n)];
         gebaut++;
       }
       toreSetzen(z);
@@ -128,6 +164,15 @@ export function befehlAnwenden(z, b) {
       const eigene = z.einheiten.filter((u) => u.art === 'soldat' && u.besitzer === herr && ids.includes(u.id)).sort((a, c) => a.id - c.id);
       if (!eigene.length) return;
       if (b.aktion === 'frei') { for (const u of eigene) u.befehl = null; return; }
+      if (b.aktion === 'mauer') {
+        // Auf Mauer, Torhaus oder Turm stationieren: Plätze entlang der verbundenen Mauerstücke verteilen.
+        const g = z.gebaeude[ganz(b.id, 0, z.gebaeude.length - 1)];
+        if (!g || g.besitzer !== herr || g.zustand !== 'fertig' || !(GEBAEUDE[g.art].mauer || g.art === 'turm')) return;
+        const plaetze = mauerPlaetze(z, g, eigene.length);
+        eigene.forEach((u, i) => { const p = plaetze[i % plaetze.length]; u.befehl = { typ: 'mauer', id: p.id, x: p.x, y: p.y }; u.pfad = null; });
+        meldung(z, herr, `${eigene.length} ${eigene.length === 1 ? 'Soldat bezieht' : 'Soldaten beziehen'} Stellung auf ${g.art === 'turm' ? 'dem Wachturm' : g.art === 'tor' ? 'dem Torhaus' : 'der Mauer'}.`, 'info');
+        return;
+      }
       if (b.aktion === 'angriff') {
         const ziel = z.einheiten.find((e) => e.id === ganz(b.ziel, 0, 1e9) && e.art === 'raeuber');
         if (ziel) { for (const u of eigene) u.befehl = { typ: 'angriff', ziel: ziel.id }; return; }

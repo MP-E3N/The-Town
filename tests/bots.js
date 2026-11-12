@@ -28,14 +28,15 @@ export function platzFuerAuftrag(z, art, x, y, rMax = 12) {
 
 /** Bestes Gebiet (Summe einer Kachel-Bewertung im Radius 4) im eigenen Land. */
 function gebiet(z, wert, abstandMin = 6) {
-  const k = karteFuer(z.seed), burg = z.gebaeude[z.herren[0].burg];
+  const k = karteFuer(z.seed), burg = z.gebaeude[z.herren[0].burg], markt = z.gebaeude[z.herren[0].markt];
   let best = null, bw = -Infinity;
   for (let ty = 3; ty < KARTE_H - 3; ty += 2) for (let tx = 3; tx < KARTE_B - 3; tx += 2) {
     const d = Math.hypot(tx * 1000 - burg.x, ty * 1000 - burg.y) / 1000;
     if (d > LAND_RADIUS - 5 || d < abstandMin) continue;
     let w = 0;
     for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) w += wert((ty + dy) * KARTE_B + tx + dx, k);
-    w -= d * 2;
+    // WARUM vom Markt aus: Die Burg liegt abseits auf dem Hügel; Speicher und Träger sind in der Stadt.
+    w -= Math.hypot(tx * 1000 - markt.x, ty * 1000 - markt.y) / 1000 * 2;
     if (w > bw) { bw = w; best = { x: tx * 1000 + 500, y: ty * 1000 + 500 }; }
   }
   return best;

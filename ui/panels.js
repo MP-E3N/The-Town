@@ -28,11 +28,11 @@ const ZONEN_TEXT = [
 ];
 const AUFTRAG_TEXT = {
   kaserne: 'Bildet Soldaten aus (10 Plätze). Rekrut: 1 Speer oder Bogen + 8 Gold + 1 Bewohner. Unterhalt je Soldat: 1 Nahrung + ⅓ Gold pro Tag. Rekrutieren: fertige Kaserne anklicken.',
-  turm: 'Schießt auf Räuber, schützt Häuser in der Nähe (Sicherheit).',
+  turm: 'Schießt auf Räuber, schützt Häuser in der Nähe (Sicherheit). Rastet an Mauer-Knoten ein (gelbe Punkte).',
   schmiede: 'Macht Waffen aus Holz + Eisen. Eisen kommt aus der Erzgrube (Bergbau auf Erz).',
   speicher: 'Zusätzliches Lager: kürzere Wege für die Träger.',
-  palisade: 'Holzwand. Klicke Punkte nacheinander; Rechtsklick beendet. Über Straßen wird ein Tor gebaut.',
-  mauer: 'Steinmauer, viel stabiler. Klicke Punkte nacheinander; Rechtsklick beendet.',
+  palisade: 'Holzwand. Klicke Punkte nacheinander; Rechtsklick beendet. Neue Stücke rasten an Mauer-Enden und Türmen ein (gelbe Punkte). Über Straßen entsteht ein Torhaus mit zwei Türmen.',
+  mauer: 'Steinmauer, viel stabiler. Klicke Punkte nacheinander; Rechtsklick beendet. Rastet an Mauer-Enden und Türmen ein. Soldaten auswählen + Rechtsklick auf Mauer/Turm/Torhaus = Stellung beziehen (halber Schaden, größere Reichweite).',
   sammeln: 'Klick auf die Karte: Soldaten sammeln sich dort. Noch einmal wählen + Rechtsklick = aufheben.',
   abriss: 'Klick auf ein Gebäude reißt es ab (halbes Material zurück).',
 };

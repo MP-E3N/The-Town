@@ -9,7 +9,7 @@
 
 import { GEBAEUDE } from '../data/gebaeude.js';
 import { zuWelt, zoomeUm, begrenze, kameraSchritt } from '../render/kamera.js';
-import { auftragPruefen } from '../sim/befehle.js';
+import { auftragPruefen, mauerEnden } from '../sim/befehle.js';
 import { abgeleitet } from '../sim/abgeleitet.js';
 import { punktIn, wnorm } from '../sim/lib.js';
 
@@ -57,11 +57,44 @@ export function verbindeEingabe(canvas, a) {
     return Math.round(Math.atan2(best.qy - y, best.qx - x) * 180 / Math.PI + 90);
   }
 
+  /**
+   * Rasterpunkte: Enden aller eigenen Mauerstücke und Mittelpunkte der Türme. Neue Mauern und Türme rasten
+   * dort ein (Fangradius ≈ 18 Bildpunkte, mindestens 0,7 Kacheln).
+   */
+  function rasterpunkte() {
+    const out = [], spieler = a.verbindung().spieler;
+    for (const g of z().gebaeude) {
+      if (g.zustand === 'weg' || g.besitzer !== spieler || !(GEBAEUDE[g.art].mauer || g.art === 'turm')) continue;
+      const e = mauerEnden(g), w = g.art === 'turm' ? null : g.w;
+      for (let i = 0; i < 4; i += 2) {
+        if (g.art === 'turm' && i) continue;
+        const x = e[i] / 1000, y = e[i + 1] / 1000;
+        const da = out.find((p) => Math.hypot(p.x - x, p.y - y) < 0.3);
+        if (da) { if (g.art === 'turm') da.turm = true; continue; }
+        out.push({ x, y, w, turm: g.art === 'turm' });
+      }
+    }
+    return out;
+  }
+  function einrasten(p) {
+    const r = Math.max(0.7, 18 / kamera.zoom);
+    let best = null, bd = r;
+    for (const q of rasterpunkte()) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = q; } }
+    return best;
+  }
+
   function geistAktualisieren() {
     const w = ui.werkzeug;
+    ui.fang = null;
+    if (w && (w.typ === 'mauer' || (w.typ === 'bauen' && w.art === 'turm')) && ui.maus) {
+      ui.rasterpunkte = rasterpunkte();
+      ui.fang = einrasten(ui.maus);
+    } else ui.rasterpunkte = null;
     if (!w || w.typ !== 'bauen' || !ui.maus) { ui.geist = null; return; }
     const typ = GEBAEUDE[w.art];
     const o = { x: Math.round(ui.maus.x * 1000), y: Math.round(ui.maus.y * 1000), b: typ.b, t: typ.t, w: wnorm(winkelZurStrasse(ui.maus.x, ui.maus.y) + ui.drehung) };
+    // Wachturm auf einem Mauerknoten: genau dort, ausgerichtet an der Mauer
+    if (w.art === 'turm' && ui.fang) { o.x = Math.round(ui.fang.x * 1000); o.y = Math.round(ui.fang.y * 1000); o.w = wnorm((ui.fang.w ?? 0) + ui.drehung); }
     ui.geist = { ...o, grund: auftragPruefen(z(), a.verbindung().spieler, w.art, o) };
   }
 
@@ -76,10 +109,23 @@ export function verbindeEingabe(canvas, a) {
     const ids = [...ui.einheiten].filter((id) => z().einheiten.some((u) => u.id === id));
     if (!ids.length) return false;
     const feind = einheitUnter(p.x, p.y, 'raeuber');
+    const wehr = feind ? null : wehrUnter(p.x, p.y);
     if (feind) a.verbindung().senden({ typ: 'einheiten', ids, aktion: 'angriff', ziel: feind.id });
+    else if (wehr) a.verbindung().senden({ typ: 'einheiten', ids, aktion: 'mauer', id: wehr.id });
     else a.verbindung().senden({ typ: 'einheiten', ids, aktion: 'gehe', x: Math.round(p.x * 1000), y: Math.round(p.y * 1000) });
-    ui.befehlsZiel = { x: p.x, y: p.y, t: a.szeneZeit(), angriff: !!feind };
+    ui.befehlsZiel = { x: p.x, y: p.y, t: a.szeneZeit(), angriff: !!feind, mauer: !!wehr };
     return true;
+  }
+  /** Fertige eigene Mauer, Torhaus oder Wachturm unter der Maus (für „Stellung beziehen“). */
+  function wehrUnter(x, y) {
+    let best = null, bd = Infinity;
+    for (const g of z().gebaeude) {
+      if (g.zustand !== 'fertig' || g.besitzer !== a.verbindung().spieler || !(GEBAEUDE[g.art].mauer || g.art === 'turm')) continue;
+      if (!punktIn(g, Math.round(x * 1000), Math.round(y * 1000), 250)) continue;
+      const d = (g.x / 1000 - x) ** 2 + (g.y / 1000 - y) ** 2;
+      if (d < bd) { bd = d; best = g; }
+    }
+    return best;
   }
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -105,7 +151,8 @@ export function verbindeEingabe(canvas, a) {
         if (!e.shiftKey) a.werkzeug(null);
       }
     } else if (w.typ === 'mauer') {
-      const q = { x: Math.round(p.x * 1000), y: Math.round(p.y * 1000) };
+      const f = einrasten(p);
+      const q = f ? { x: Math.round(f.x * 1000), y: Math.round(f.y * 1000) } : { x: Math.round(p.x * 1000), y: Math.round(p.y * 1000) };
       if (ui.mauerStart) v.senden({ typ: 'mauer', art: w.art, ax: ui.mauerStart.x, ay: ui.mauerStart.y, bx: q.x, by: q.y });
       ui.mauerStart = q;
     } else if (w.typ === 'sammeln') {

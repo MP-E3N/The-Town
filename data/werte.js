@@ -16,7 +16,7 @@ export const KARTE_H = 96;
 /** Höhe 0..1000; darunter ist Wasser. */
 export const WASSERSPIEGEL = 300;
 /** Herrschaftsgebiet: Kacheln um die Burg, in denen ausgeschrieben und gebaut werden darf. */
-export const LAND_RADIUS = 34;
+export const LAND_RADIUS = 40;
 
 export const STADTNAME = 'Eschenbrück';
 export const FLUSSNAME = 'Ilmbach';
@@ -91,6 +91,9 @@ export const KAMPF = {
   turm: { schaden: 12, takt: 14, reichweite: 6500 },
   burg: { schaden: 12, takt: 12, reichweite: 7500 },
   mauerSchaden: 8,
+  /** Wer auf Mauer oder Turm steht, reicht weiter (Milli-Kacheln). */
+  mauerReichweiteBogen: 1500,
+  mauerReichweiteSpeer: 500,
   pluenderTakt: 20,
   pluenderSchaden: 4,
   beuteMax: 12,

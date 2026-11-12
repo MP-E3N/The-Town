@@ -150,6 +150,7 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
   const cv = canvas(w, h), ctx = cv.getContext('2d');
   const r = rnd(variante * 131 + Math.round(w * 3 + h));
   const kamine = [];
+  let koerper = null; // optional: nur diese Form wirft Schatten (z. B. Kirche ohne Kirchhof)
   const kamin = () => { const k = { x: 0, y: 0 }; kamine.push(k); return k; };
   const dachart = DACHARTEN[variante % 4];
   switch (art) {
@@ -275,13 +276,39 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
       for (let px = 0; px < w; px += h * 0.7) ctx.fillRect(px, 0, h * 0.4, h * 0.3);
       break;
     }
-    case 'tor': {
-      ctx.fillStyle = '#6a4a2a'; ctx.fillRect(w * 0.2, h * 0.1, w * 0.6, h * 0.8);
+    case 'tor':
+    case 'tor_mauer': {
+      // Torhaus aus Stein: Mauerstümpfe, überdachter Torbau mit Fallgatter vorn und hinten, zwei runde Flankentürme
+      const r2 = h * 0.34;
+      steinmauer(ctx, 0, h * 0.36, w, h * 0.28, [150, 146, 136]);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(w * 0.28 + 3, h * 0.08 + 3, w * 0.44, h * 0.84);
+      steinmauer(ctx, w * 0.28, h * 0.08, w * 0.44, h * 0.84, [140, 134, 124]);
+      satteldach(ctx, w * 0.31, h * 0.14, w * 0.38, h * 0.72, 'schiefer', r, { first: false });
+      ctx.fillStyle = '#1e1a16'; ctx.fillRect(w * 0.4, h * 0.02, w * 0.2, h * 0.1); ctx.fillRect(w * 0.4, h * 0.88, w * 0.2, h * 0.1);
+      ctx.strokeStyle = '#6a6460'; ctx.lineWidth = 1.2;
+      for (let px = w * 0.42; px < w * 0.6; px += 4) { ctx.beginPath(); ctx.moveTo(px, h * 0.02); ctx.lineTo(px, h * 0.12); ctx.moveTo(px, h * 0.88); ctx.lineTo(px, h * 0.98); ctx.stroke(); }
+      turmRund(ctx, r2 + 2, h / 2, r2);
+      turmRund(ctx, w - r2 - 2, h / 2, r2);
+      fahne(ctx, w / 2, h * 0.5, w * 0.12);
+      break;
+    }
+    case 'tor_palisade': {
+      // Holztor: Palisadenstümpfe, zwei hölzerne Tortürme mit Bretterdach, Bohlentor in der Mitte
+      const rr = h * 0.2, n = Math.max(2, Math.round(w / (rr * 1.7)));
+      for (let i = 0; i < n; i++) {
+        const px = (i + 0.5) * w / n; if (px > w * 0.3 && px < w * 0.7) continue;
+        ctx.fillStyle = '#3a2614'; ctx.beginPath(); ctx.arc(px, h / 2, rr, 0, 7); ctx.fill();
+        ctx.fillStyle = '#9a6e42'; ctx.beginPath(); ctx.arc(px, h / 2, rr - 1.5, 0, 7); ctx.fill();
+      }
+      ctx.fillStyle = '#5a3e22'; ctx.fillRect(w * 0.3, h * 0.38, w * 0.4, h * 0.24);
       ctx.strokeStyle = '#3a2814'; ctx.lineWidth = 1;
-      for (let px = w * 0.2; px < w * 0.8; px += 4) { ctx.beginPath(); ctx.moveTo(px, h * 0.1); ctx.lineTo(px, h * 0.9); ctx.stroke(); }
-      ctx.fillStyle = '#2a2a2a'; ctx.fillRect(w * 0.2, h * 0.45, w * 0.6, h * 0.1);
-      steinmauer(ctx, 0, 0, w * 0.22, h, [150, 146, 136]); steinmauer(ctx, w * 0.78, 0, w * 0.22, h, [150, 146, 136]);
-      zinnen(ctx, 0, 0, w * 0.22, h, h * 0.25); zinnen(ctx, w * 0.78, 0, w * 0.22, h, h * 0.25);
+      for (let px = w * 0.3; px < w * 0.7; px += 4) { ctx.beginPath(); ctx.moveTo(px, h * 0.38); ctx.lineTo(px, h * 0.62); ctx.stroke(); }
+      for (const tx of [w * 0.17, w * 0.83]) {
+        const s = h * 0.62;
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(tx - s / 2 + 3, h / 2 - s / 2 + 3, s, s);
+        ctx.fillStyle = '#4a321c'; ctx.fillRect(tx - s / 2, h / 2 - s / 2, s, s);
+        satteldach(ctx, tx - s / 2 + 2, h / 2 - s / 2 + 2, s - 4, s - 4, 'schindel', r);
+      }
       break;
     }
     case 'platz': {
@@ -372,14 +399,20 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
       break;
     }
     case 'kirche': {
-      // geostet: Turm im Westen (oben im Bild), Schiff mit Schieferdach, runde Apsis im Osten (unten)
-      ctx.fillStyle = 'rgba(120,140,90,0.55)'; ctx.fillRect(0, 0, w, h);
-      for (let i = 0; i < 10; i++) { ctx.fillStyle = '#9a968a'; ctx.fillRect(w * (i % 2 ? 0.03 : 0.85), h * (0.25 + i * 0.06), w * 0.09, h * 0.025); }
-      satteldach(ctx, w * 0.17, h * 0.2, w * 0.66, h * 0.6, 'schiefer', r, { first: true });
-      ctx.fillStyle = '#4e5664'; ctx.beginPath(); ctx.arc(w / 2, h * 0.8, w * 0.27, 0, Math.PI); ctx.fill();
+      // geostet: Turm/Portal im Westen (oben im Bild), Schiff mit Schieferdach, runde Apsis im Osten (unten).
+      // Kirchhof mit niedriger Mauer und Grabsteinen; er wirft keinen Schatten (siehe koerper unten).
+      ctx.fillStyle = '#7f9a5a'; ctx.fillRect(2, 2, w - 4, h - 4);
+      ctx.strokeStyle = '#8e897c'; ctx.lineWidth = 2.5; ctx.strokeRect(2, 2, w - 4, h - 4);
+      ctx.fillStyle = '#7a6a52'; ctx.fillRect(w / 2 - 5, 0, 10, h * 0.1); // Weg zum Portal
+      for (let i = 0; i < 14; i++) { ctx.fillStyle = '#a6a194'; ctx.fillRect(w * (i % 2 ? 0.06 : 0.84), h * (0.24 + Math.floor(i / 2) * 0.09), w * 0.07, h * 0.022); }
+      for (const [bx, by] of [[0.1, 0.12], [0.88, 0.9]]) { ctx.fillStyle = '#4e7a3a'; ctx.beginPath(); ctx.arc(w * bx, h * by, w * 0.09, 0, 7); ctx.fill(); }
+      const kw0 = w * 0.2, kw = w * 0.6;
+      const ts = kw * 0.8, tx = w / 2, ty = ts / 2 + h * 0.03;
+      koerper = (c2) => { c2.fillRect(kw0, h * 0.2, kw, h * 0.6); c2.beginPath(); c2.arc(w / 2, h * 0.8, kw * 0.42, 0, Math.PI); c2.fill(); c2.fillRect(tx - ts / 2, ty - ts / 2, ts, ts); };
+      satteldach(ctx, kw0, h * 0.2, kw, h * 0.6, 'schiefer', r, { first: true });
+      ctx.fillStyle = '#4e5664'; ctx.beginPath(); ctx.arc(w / 2, h * 0.8, kw * 0.42, 0, Math.PI); ctx.fill();
       ctx.strokeStyle = '#30363f'; ctx.lineWidth = 1;
-      for (let a = 0.2; a < 3.0; a += 0.45) { ctx.beginPath(); ctx.moveTo(w / 2, h * 0.8); ctx.lineTo(w / 2 + Math.cos(a) * w * 0.27, h * 0.8 + Math.sin(a) * w * 0.27); ctx.stroke(); }
-      const ts = w * 0.62, tx = w / 2, ty = h * 0.13;
+      for (let a = 0.2; a < 3.0; a += 0.45) { ctx.beginPath(); ctx.moveTo(w / 2, h * 0.8); ctx.lineTo(w / 2 + Math.cos(a) * kw * 0.42, h * 0.8 + Math.sin(a) * kw * 0.42); ctx.stroke(); }
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(tx - ts / 2 + 4, ty - ts / 2 + 4, ts, ts);
       ctx.fillStyle = '#8a8476'; ctx.fillRect(tx - ts / 2 - 1, ty - ts / 2 - 1, ts + 2, ts + 2);
       ctx.fillStyle = '#5c6472'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - ts / 2, ty - ts / 2); ctx.lineTo(tx + ts / 2, ty - ts / 2); ctx.fill();
@@ -451,7 +484,9 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'source-over';
   }
-  return { cv, kamine: kamine.map((k) => ({ x: k.x / PPT - bT / 2, y: k.y / PPT - tT / 2 })) };
+  let schattenCv = null;
+  if (koerper) { schattenCv = canvas(w, h); const c2 = schattenCv.getContext('2d'); c2.fillStyle = '#000'; koerper(c2); }
+  return { cv, schattenCv, kamine: kamine.map((k) => ({ x: k.x / PPT - bT / 2, y: k.y / PPT - tT / 2 })) };
 }
 
 function schattenVon(cv) {
@@ -469,7 +504,7 @@ export function gebaeudeSprite(art, variante, b, t, winter) {
   let s = gebCache.get(key);
   if (!s) {
     const g = zeichneGebaeude(art, variante, b / 1000, t / 1000, winter);
-    s = { cv: g.cv, schatten: schattenVon(g.cv), kamine: g.kamine };
+    s = { cv: g.cv, schatten: g.schattenCv || schattenVon(g.cv), kamine: g.kamine };
     gebCache.set(key, s);
   }
   return s;

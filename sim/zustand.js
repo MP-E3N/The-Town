@@ -12,7 +12,7 @@ import { karteFuer } from './karte.js';
 import { abgeleitet } from './abgeleitet.js';
 import { findePfad } from './pfad.js';
 import { strasseHinzufuegen } from './strassen.js';
-import { begradigen } from './stadtplaner.js';
+import { begradigen, nurNeuerTeil } from './stadtplaner.js';
 import { gebaeudeAnlegen, findePlatz, planeGasse, tuer, tuerKachel, pruefePlatz } from './baumeister.js';
 import { neuerSoldat } from './militaer.js';
 import { arbeitVerteilen } from './wirtschaft.js';
@@ -88,13 +88,28 @@ function marktAnlegen(z, k, platz, burg, handel) {
     const o = { x: p.x, y: p.y, b: r.b, t: r.t, w: wnorm(seite > 0 ? platz.w : platz.w + 180) };
     if (!pruefePlatz(z, 0, o, { steilMax: 120, strRand: 40, rand: 60 })) { gebaeudeAnlegen(z, 0, 'rathaus', o, { sofort: true, keinWeg: true }); break; }
   }
-  // Kirche: geostet (Chor im Osten), nahe am Platz
+  // Kirche: nahe am Markt, ungefähr geostet (Turm/Portal im Westen, Chor im Osten), das Portal an einer Straße.
+  // WARUM nicht exakt 270°: Viele Stadtkirchen weichen der Straßenflucht zuliebe ab; ein Portal, das ins Feld
+  // oder zum Fluss zeigt, wirkt falsch. Bewertet: Nähe zum Platz, Portal nah an Straße/Platz, wenig Abweichung,
+  // Abstand zu Wasser und Burg.
   const kt = GEBAEUDE.kirche;
-  let kirche = null;
-  for (let rr = 4500; rr <= 11000 && !kirche; rr += 700) {
-    for (let w = 0; w < 360 && !kirche; w += 30) {
-      const o = { x: platz.x + Math.trunc(COS[w] * rr / 1024), y: platz.y + Math.trunc(SIN[w] * rr / 1024), b: kt.b, t: kt.t, w: 270 };
-      if (!pruefePlatz(z, 0, o, { steilMax: 90, strRand: 150, rand: 300 })) kirche = o;
+  const c = abgeleitet(z);
+  let kirche = null, bw = Infinity;
+  for (let rr = 3500; rr <= 10500; rr += 500) {
+    for (let a = 0; a < 360; a += 15) {
+      const x = platz.x + Math.trunc(COS[a] * rr / 1024), y = platz.y + Math.trunc(SIN[a] * rr / 1024);
+      for (const w of [270, 255, 285, 240, 300]) {
+        const o = { x, y, b: kt.b, t: kt.t, w };
+        if (pruefePlatz(z, 0, o, { steilMax: 90, strRand: 200, rand: 400 })) continue;
+        const p = tuer(o), tk = kachel(p.x, p.y);
+        if (tk < 0 || tk >= k.wasser.length || k.wasser[tk]) continue;
+        const portal = c.strDist[tk];
+        if (portal > 3) continue;
+        let nass = 0;
+        for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const t = kachel(x + dx * 1000, y + dy * 1000); if (t >= 0 && t < k.wasser.length && k.wasser[t]) nass++; }
+        const wert = rr + portal * 1500 + Math.abs(w - 270) * 60 + nass * 900 - Math.min(abstand(x, y, burg.x, burg.y), 14000) / 4;
+        if (wert < bw) { bw = wert; kirche = o; }
+      }
     }
   }
   if (kirche) gebaeudeAnlegen(z, 0, 'kirche', kirche, { sofort: true });
@@ -116,16 +131,18 @@ export function erzeugeZustand(seed) {
   h.burg = burg.id;
   const platz = gebaeudeAnlegen(z, 0, 'platz', { x: k.markt.x, y: k.markt.y, b: GEBAEUDE.platz.b, t: GEBAEUDE.platz.t, w: wnorm(dir + 90) }, { sofort: true, keinWeg: true });
   h.markt = platz.id;
-  // Burgweg und Handelsstraße (über den Fluss: Brücke)
+  // Erst die Handelsstraße durch den Markt (über den Fluss: Brücke), dann der Burgweg.
+  // WARUM diese Reihenfolge + nurNeuerTeil: Sonst läuft der Burgweg ein Stück neben der Handelsstraße her
+  // (zwei parallele Straßen). So mündet er als T-Kreuzung in die Handelsstraße.
   const mk = kachel(k.markt.x, k.markt.y);
-  const p1 = findePfad(z, tuerKachel(burg), mk, 'bau');
-  if (p1) strasseHinzufuegen(z, begradigen(z, p1, tuer(burg), null), 'haupt');
   const my = Math.floor(k.markt.y / 1000);
   const handel = [];
   for (const links of [true, false]) {
     const p = findePfad(z, mk, randZiel(k, links, my), 'bau');
-    if (p) { strasseHinzufuegen(z, begradigen(z, p, null, null), 'haupt'); handel.push(p); }
+    if (p) { strasseHinzufuegen(z, begradigen(z, nurNeuerTeil(z, p), null, null), 'haupt'); handel.push(p); }
   }
+  const p1 = findePfad(z, tuerKachel(burg), mk, 'bau');
+  if (p1) strasseHinzufuegen(z, begradigen(z, nurNeuerTeil(z, p1), tuer(burg), null), 'haupt');
   marktAnlegen(z, k, platz, burg, handel);
   // Erste Zonen
   const mx = Math.floor(k.markt.x / 1000);

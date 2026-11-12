@@ -10,7 +10,7 @@
 
 export const GEBAEUDE = {
   burg: { name: 'Burg Eschenbrück', b: 7000, t: 7000, hp: 3000, plaetze: 5, schiesst: 'burg', lager: true },
-  platz: { name: 'Marktplatz', b: 7600, t: 4600, begehbar: true },
+  platz: { name: 'Marktplatz', b: 5400, t: 3200, begehbar: true },
   speicher: { name: 'Speicher', b: 2200, t: 2800, kosten: { holz: 30 }, arbeit: 900, hp: 400, lager: true },
   haus: { name: 'Wohnhaus', b: 1150, t: 1600, kosten: { holz: 8 }, arbeit: 450, hp: 150, wohnplaetze: 5, zone: 1 },
   hof: { name: 'Bauernhof', b: 1800, t: 2100, kosten: { holz: 14 }, arbeit: 600, hp: 220, arbeiter: 2, wohnplaetze: 4, zone: 2, ware: 'nahrung', gruppe: 0 },
@@ -26,8 +26,8 @@ export const GEBAEUDE = {
   palisade: { name: 'Palisade', b: 1500, t: 500, kosten: { holz: 3 }, arbeit: 120, hp: 200, mauer: true, auftrag: true },
   mauer: { name: 'Steinmauer', b: 1500, t: 640, kosten: { stein: 4 }, arbeit: 220, hp: 600, mauer: true, auftrag: true },
   rathaus: { name: 'Rathaus', b: 2600, t: 2000, hp: 800 },
-  kirche: { name: 'Kirche St. Ilmar', b: 2000, t: 4200, hp: 1000 },
-  tor: { name: 'Tor', b: 1500, t: 700, kosten: { holz: 4 }, arbeit: 200, hp: 450, mauer: true, tor: true },
+  kirche: { name: 'Kirche St. Ilmar', b: 2600, t: 4600, hp: 1000 },
+  tor: { name: 'Torhaus', b: 3000, t: 1500, kosten: { holz: 4 }, arbeit: 200, hp: 450, hpStein: 1100, mauer: true, tor: true },
 };
 
 /** Zonen (z.zone[k]); Index = Zahl im Zustand. */

@@ -12,10 +12,10 @@ import { KARTE_B, KARTE_H, LAND_RADIUS, KAMPF, TEMPO, UEBERFALL, TICKS_PRO_TAG, 
 import { GEBAEUDE } from '../data/gebaeude.js';
 import { karteFuer } from './karte.js';
 import { abgeleitet } from './abgeleitet.js';
-import { findePfad, freieLinie } from './pfad.js';
+import { findePfad, freieLinie, begehbar, naechsteBegehbare } from './pfad.js';
 import { tuer } from './baumeister.js';
 import { nehmen, geben, summieren } from './lager.js';
-import { abstand, abstand2, kachel, kachelMitte, winkelVon, zufall, zufallZwischen, ereignis, meldung, COS, SIN } from './lib.js';
+import { abstand, abstand2, kachel, kachelMitte, winkelVon, zufall, zufallZwischen, ereignis, meldung, lokal, COS, SIN } from './lib.js';
 
 export function soldatenVon(z, herr) {
   let n = 0;
@@ -25,7 +25,7 @@ export function soldatenVon(z, herr) {
 
 function neueEinheit(z, art, besitzer, x, y) {
   const k = art === 'raeuber' ? KAMPF.raeuber : KAMPF.soldat;
-  const u = { id: z.naechsteEinheit++, art, besitzer, x, y, hp: k.hp, hpMax: k.hp, zustand: 'ruhe', ziel: -1, pfad: null, pi: 0, pfadZiel: -1, neuPfad: 0, cd: 0, blick: 90, heim: -1, bande: -1, beuteN: 0, beuteG: 0 };
+  const u = { id: z.naechsteEinheit++, art, besitzer, x, y, hp: k.hp, hpMax: k.hp, zustand: 'ruhe', mauerPlatz: -1, ziel: -1, pfad: null, pi: 0, pfadZiel: -1, neuPfad: 0, cd: 0, blick: 90, heim: -1, bande: -1, beuteN: 0, beuteG: 0 };
   z.einheiten.push(u);
   return u;
 }
@@ -43,11 +43,17 @@ export function kampfwerte(u) { return u.art === 'raeuber' ? KAMPF.raeuber : u.t
 
 /** Bewegt u auf (zx,zy) zu. Gibt 'da', 'unterwegs', 'mauer:<id>' oder 'kein' zurück. */
 function bewegeZu(z, u, zx, zy, modus, tempo) {
+  // Ziel in einem Haus, in der Mauer oder im Wasser? Dann zur nächsten begehbaren Kachel davor.
+  let zielK = kachel(zx, zy);
+  if (!begehbar(z, zielK, modus)) {
+    const n = naechsteBegehbare(z, zielK, modus, 3);
+    if (n < 0) return 'kein';
+    if (n !== zielK) { zielK = n; const m = kachelMitte(n); zx = m.x; zy = m.y; }
+  }
   const d = abstand(u.x, u.y, zx, zy);
   if (d <= tempo) { u.x = zx; u.y = zy; return 'da'; }
   let tx = zx, ty = zy;
   if (!freieLinie(z, u.x, u.y, zx, zy, modus)) {
-    const zielK = kachel(zx, zy);
     if (!u.pfad || u.pfadZiel !== zielK || z.tick >= u.neuPfad || u.pi >= u.pfad.length) {
       u.pfad = findePfad(z, kachel(u.x, u.y), zielK, modus, { max: 12000 });
       u.pfadZiel = zielK; u.pi = 1; u.neuPfad = z.tick + 25 + (u.id % 7);
@@ -74,7 +80,9 @@ function angreifen(z, u, ziel) {
   const k = kampfwerte(u);
   u.cd = k.takt;
   u.blick = winkelVon(ziel.x - u.x, ziel.y - u.y);
-  ziel.hp -= zufallZwischen(z, k.schaden[0], k.schaden[1]);
+  const s = zufallZwischen(z, k.schaden[0], k.schaden[1]);
+  // WARUM halb: Wer hinter Zinnen steht, ist schwer zu treffen.
+  ziel.hp -= (ziel.mauerPlatz ?? -1) >= 0 ? Math.floor(s / 2) : s;
   if (u.typ === 'bogen') ereignis(z, { typ: 'pfeil', vonEinheit: u.id, ax: u.x, ay: u.y, x: ziel.x, y: ziel.y });
 }
 
@@ -101,16 +109,69 @@ function postenVon(z, u) {
   if (h.sammelpunkt) { mx = h.sammelpunkt.x; my = h.sammelpunkt.y; r = 600 + (u.id % 3) * 450; }
   else {
     const g = z.gebaeude[u.heim] && z.gebaeude[u.heim].zustand === 'fertig' ? z.gebaeude[u.heim] : z.gebaeude[h.burg];
-    if (g.art === 'burg') { mx = g.x; my = g.y; r = 900 + (u.id % 2) * 700; }
-    else { const p = tuer(g); mx = p.x; my = p.y; r = 500 + (u.id % 3) * 400; }
+    if (g.art === 'burg') {
+      // Im vorderen Burghof (zwischen Tor und Palas), nicht auf Dächern von Bergfried und Ställen
+      return lokal(g, -2000 + ((u.id * 37) % 7) * 450, -2200 + ((u.id * 53) % 4) * 420);
+    }
+    const p = tuer(g); mx = p.x; my = p.y; r = 500 + (u.id % 3) * 400;
   }
   const w = (u.id * 73) % 360;
   return { x: mx + Math.trunc(COS[w] * r / 1024), y: my + Math.trunc(SIN[w] * r / 1024) };
 }
 
+/** Auf der Mauer: nicht von der Stelle, aber alles in Reichweite angreifen (Bogen +1,5, Speer +0,5 Kacheln). */
+function mauerWache(z, u) {
+  u.zustand = 'mauer';
+  const reichweite = kampfwerte(u).reichweite + (u.typ === 'bogen' ? KAMPF.mauerReichweiteBogen : KAMPF.mauerReichweiteSpeer);
+  const e = naechster(z, u, 'raeuber', reichweite);
+  if (e) angreifen(z, u, e);
+  else if (u.hp < u.hpMax && z.tick % 25 === 0) u.hp++;
+}
+
+/** Von der Mauer herunter auf die Seite zur Burg hin (die Innenseite). */
+function herabsteigen(z, u, g) {
+  const burg = z.gebaeude[z.herren[u.besitzer].burg];
+  let ziel = kachel(u.x, u.y);
+  if (g) {
+    const nx = -SIN[g.w], ny = COS[g.w];
+    const sd = (burg.x - u.x) * nx + (burg.y - u.y) * ny >= 0 ? 1 : -1;
+    ziel = kachel(u.x + Math.trunc(nx * sd * (Math.trunc(g.t / 2) + 600) / 1024), u.y + Math.trunc(ny * sd * (Math.trunc(g.t / 2) + 600) / 1024));
+  }
+  const n = naechsteBegehbare(z, ziel, 'buerger', 3);
+  if (n >= 0) { const m = kachelMitte(n); u.x = m.x; u.y = m.y; }
+  u.mauerPlatz = -1; u.pfad = null;
+  if (!g || g.zustand !== 'fertig') { u.hp -= 10; u.befehl = { typ: 'halten', x: u.x, y: u.y }; }
+}
+
+/** Zur Mauer gehen (Innenseite) und hinaufsteigen. */
+function aufDieMauer(z, u) {
+  const hb = u.befehl, g = z.gebaeude[hb.id];
+  if (!g || g.zustand !== 'fertig') { u.befehl = { typ: 'halten', x: u.x, y: u.y }; return; }
+  // Feinde ganz nah? Erst wehren.
+  const e = naechster(z, u, 'raeuber', 1600);
+  if (e) { kaempfe(z, u, e); return; }
+  const burg = z.gebaeude[z.herren[u.besitzer].burg];
+  const nx = -SIN[g.w], ny = COS[g.w];
+  const sd = (burg.x - hb.x) * nx + (burg.y - hb.y) * ny >= 0 ? 1 : -1;
+  const off = Math.trunc(g.t / 2) + 650;
+  const ax = hb.x + Math.trunc(nx * sd * off / 1024), ay = hb.y + Math.trunc(ny * sd * off / 1024);
+  u.zustand = 'marsch';
+  const r = bewegeZu(z, u, ax, ay, 'buerger', TEMPO.soldat);
+  if ((r === 'da' || abstand(u.x, u.y, ax, ay) < 400) && abstand(u.x, u.y, hb.x, hb.y) < 2400) {
+    u.x = hb.x; u.y = hb.y; u.mauerPlatz = g.id; u.pfad = null; u.zustand = 'mauer';
+  } else if (r === 'kein') u.befehl = { typ: 'halten', x: u.x, y: u.y };
+}
+
 function soldatKI(z, u) {
   const h = z.herren[u.besitzer];
   const burg = z.gebaeude[h.burg];
+  if ((u.mauerPlatz ?? -1) >= 0) {
+    const g = z.gebaeude[u.mauerPlatz];
+    const bleibt = g && g.zustand === 'fertig' && u.befehl && u.befehl.typ === 'mauer' && u.befehl.id === g.id;
+    if (bleibt) { mauerWache(z, u); return; }
+    herabsteigen(z, u, g);
+  }
+  if (u.befehl && u.befehl.typ === 'mauer') { aufDieMauer(z, u); return; }
   if (u.befehl && u.befehl.typ === 'angriff') {
     const e = z.einheiten.find((x) => x.id === u.befehl.ziel && x.hp > 0);
     if (e) { kaempfe(z, u, e); return; }
@@ -123,7 +184,9 @@ function soldatKI(z, u) {
     if (e && abstand(e.x, e.y, hb.x, hb.y) < 5000) { kaempfe(z, u, e); return; }
     if (abstand(u.x, u.y, hb.x, hb.y) > 250) {
       u.zustand = 'marsch';
-      if (bewegeZu(z, u, hb.x, hb.y, 'buerger', TEMPO.soldat) === 'kein') u.befehl = { typ: 'halten', x: u.x, y: u.y };
+      const r = bewegeZu(z, u, hb.x, hb.y, 'buerger', TEMPO.soldat);
+      // 'da', aber nicht am Punkt: Der Punkt lag in einem Haus/im Wasser → hier stehen bleiben.
+      if (r === 'kein' || r === 'da') u.befehl = { typ: 'halten', x: u.x, y: u.y };
     } else { u.zustand = 'halten'; if (u.hp < u.hpMax && z.tick % 30 === 0) u.hp++; }
     return;
   }
@@ -346,7 +409,16 @@ function trennen(z) {
       const d = Math.max(1, Math.floor(Math.sqrt(d2)));
       const schub = Math.floor((R - Math.min(d, R)) / 4);
       const px = Math.trunc(dx * schub / d), py = Math.trunc(dy * schub / d);
-      a.x -= px; a.y -= py; b.x += px; b.y += py;
+      // WARUM prüfen: Das Auseinanderschieben hat Figuren früher in Häuser, Mauern und den Fluss gedrückt.
+      // Wer auf der Mauer steht, bleibt auf seinem Platz.
+      if ((a.mauerPlatz ?? -1) < 0 && darfStehen(z, a, a.x - px, a.y - py)) { a.x -= px; a.y -= py; }
+      if ((b.mauerPlatz ?? -1) < 0 && darfStehen(z, b, b.x + px, b.y + py)) { b.x += px; b.y += py; }
     }
   }
+}
+
+function darfStehen(z, u, x, y) {
+  const neu = kachel(x, y);
+  if (neu === kachel(u.x, u.y)) return true;
+  return begehbar(z, neu, u.art === 'raeuber' ? 'raeuber' : 'buerger');
 }

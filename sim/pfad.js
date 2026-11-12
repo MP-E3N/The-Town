@@ -12,6 +12,7 @@
 import { KARTE_B, KARTE_H } from '../data/werte.js';
 import { karteFuer } from './karte.js';
 import { abgeleitet } from './abgeleitet.js';
+import { kachel } from './lib.js';
 
 const N = KARTE_B * KARTE_H;
 const gKost = new Int32Array(N), vorg = new Int32Array(N), gen = new Int32Array(N), zu = new Uint8Array(N);
@@ -58,10 +59,11 @@ export function kachelKosten(z, c, k, i, modus, erlaubt) {
     if (k.fels[i] > 50 || k.erz[i] > 50) return 90;
     return 18 + k.steil[i] + (z.wald[i] > 50 ? 10 : 0);
   }
-  if (k.wasser[i] && !c.strasse[i]) return -1;
-  // WARUM: Burg und Kaserne haben Höfe und Tore – eigene Leute gehen hindurch, Räuber nicht.
-  if (b && modus !== 'raeuber' && hof(z, b)) return 14;
-  if (b && !(erlaubt && erlaubt.has(b - 1))) return -1;
+  // Wasser nur über die Brücke; Gebäude sind zu. Der Burghof (geh 2) ist nur für die eigenen Leute offen
+  // und nur durch das Torhaus erreichbar (Ringmauer = gesperrt).
+  if (k.wasser[i] && !c.bruecke[i]) return -1;
+  const gh = c.geh[i];
+  if (gh === 1 || (gh === 2 && modus === 'raeuber')) { if (!(b && erlaubt && erlaubt.has(b - 1))) return -1; }
   const m = c.mauer[i];
   if (m) {
     const g = z.gebaeude[m - 1];
@@ -72,7 +74,29 @@ export function kachelKosten(z, c, k, i, modus, erlaubt) {
   return 20 + (k.steil[i] >> 2) + (z.wald[i] > 50 ? 8 : 0) + (c.feld[i] ? 4 : 0);
 }
 
-function hof(z, b) { const a = z.gebaeude[b - 1].art; return a === 'burg' || a === 'kaserne'; }
+/** Darf eine Figur auf dieser Kachel stehen? (gleiche Regeln wie die Wegsuche) */
+export function begehbar(z, i, modus) {
+  if (i < 0 || i >= N) return false;
+  return kachelKosten(z, abgeleitet(z), karteFuer(z.seed), i, modus, null) >= 0;
+}
+
+/** Nächste begehbare Kachel um i (Spirale bis r Kacheln, feste Reihenfolge), oder −1. */
+export function naechsteBegehbare(z, i, modus, r = 3) {
+  if (begehbar(z, i, modus)) return i;
+  const x = i % KARTE_B, y = Math.floor(i / KARTE_B);
+  for (let d = 1; d <= r; d++) {
+    let best = -1, bd = Infinity;
+    for (let dy = -d; dy <= d; dy++) for (let dx = -d; dx <= d; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== d) continue;
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= KARTE_B || ny >= KARTE_H) continue;
+      const j = ny * KARTE_B + nx;
+      if (dx * dx + dy * dy < bd && begehbar(z, j, modus)) { bd = dx * dx + dy * dy; best = j; }
+    }
+    if (best >= 0) return best;
+  }
+  return -1;
+}
 
 /**
  * @param z Zustand  @param start Kachel  @param ziel Kachel oder −1 (dann zielFn)
@@ -144,15 +168,27 @@ export function pfadLaenge(pfad) {
 export function freieLinie(z, ax, ay, bx, by, modus) {
   const k = karteFuer(z.seed), c = abgeleitet(z);
   const dx = bx - ax, dy = by - ay, len = Math.floor(Math.sqrt(dx * dx + dy * dy));
-  const n = Math.max(1, Math.ceil(len / 400));
+  const n = Math.max(1, Math.ceil(len / 250));
+  const imHof = c.geh[kachel(ax, ay)] === 2;
+  const zu = (i) => {
+    if (kachelKosten(z, c, k, i, modus, null) < 0) return true;
+    if (modus === 'raeuber' && c.mauer[i]) return true; // Räuber laufen nie „durch“ – sie reißen ein (A*)
+    // WARUM: In den Burghof und hinaus nur über den Tordurchgang (A*), nie quer über die Ringmauer.
+    return c.geh[i] === 2 && !imHof;
+  };
+  let vor = kachel(ax, ay);
   for (let s = 1; s <= n; s++) {
     const x = ax + Math.trunc(dx * s / n), y = ay + Math.trunc(dy * s / n);
     const tx = Math.floor(x / 1000), ty = Math.floor(y / 1000);
     if (tx < 0 || ty < 0 || tx >= KARTE_B || ty >= KARTE_H) return false;
     const i = ty * KARTE_B + tx;
-    if (k.wasser[i] && !c.strasse[i]) return false;
-    if (c.belegt[i] && (modus === 'raeuber' || !hof(z, c.belegt[i]))) return false;
-    if (c.mauer[i] && (modus === 'raeuber' || z.gebaeude[c.mauer[i] - 1].art !== 'tor')) return false;
+    if (i === vor) continue;
+    if (zu(i)) return false;
+    // Diagonaler Kachelwechsel: nicht zwischen zwei gesperrten Ecken hindurchschlüpfen (diagonale Mauern)
+    if (i % KARTE_B !== vor % KARTE_B && Math.floor(i / KARTE_B) !== Math.floor(vor / KARTE_B)) {
+      if (zu(Math.floor(vor / KARTE_B) * KARTE_B + tx) || zu(ty * KARTE_B + (vor % KARTE_B))) return false;
+    }
+    vor = i;
   }
   return true;
 }

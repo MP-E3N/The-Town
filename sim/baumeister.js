@@ -89,7 +89,8 @@ export function pruefePlatz(z, herr, o, opt = {}) {
   for (const e of objekteNahe(c, o.x - r - 1500, o.y - r - 1500, o.x + r + 1500, o.y + r + 1500)) {
     const obj = e.typ === 'g' ? z.gebaeude[e.id] : z.felder[e.id];
     if (e.typ === 'g' && obj.zustand === 'weg') continue;
-    if (opt.mauer && e.typ === 'g' && GEBAEUDE[obj.art].mauer) continue;
+    if (opt.mauer && e.typ === 'g' && (GEBAEUDE[obj.art].mauer || obj.art === 'turm')) continue;
+    if (opt.mauerOk && e.typ === 'g' && GEBAEUDE[obj.art].mauer) continue;
     if (ueberlappt(o, obj, opt.mauer ? 0 : rand)) return 'belegt';
   }
   for (const x of opt.extra || []) if (ueberlappt(o, x, rand)) return 'belegt';

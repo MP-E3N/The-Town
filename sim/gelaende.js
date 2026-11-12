@@ -36,9 +36,14 @@ function erzeuge(seed) {
 
   const yb = Math.floor(H * (0.42 + 0.14 * zuf(2, 2, 2)));
   const seite = flussX(yb) > B / 2 ? -1 : 1;
-  const burg = { x: flussX(yb) + seite * (12 + 3 * zuf(3, 3, 3)), y: yb + 0.5 };
-  const markt = { x: flussX(yb + 5) + seite * 7, y: yb + 5.5 };
   const oben = zuf(4, 4, 4) < 0.5 ? -1 : 1;
+  // WARUM so weit: Die Burg thront auf ihrem Hügel abseits der Stadt (≈ 19–22 Kacheln vom Markt),
+  // nicht Mauer an Mauer mit dem Marktplatz. Richtung: vom Fluss weg und schräg hinauf/hinab.
+  const markt = { x: flussX(yb + 5) + seite * 7, y: yb + 5.5 };
+  const burgY = markt.y - oben * (13 + 2 * zuf(9, 9, 9));
+  // x am Flusslauf auf Höhe der Burg messen (der Fluss schlängelt sich) → sicher auf trockenem Hang
+  const dx = Math.max(11, Math.min(17, seite * (flussX(burgY) - markt.x) + 19 + 3 * zuf(3, 3, 3)));
+  const burg = { x: markt.x + seite * dx, y: burgY };
   const klemm = (v, a, b) => Math.max(a, Math.min(b, v));
   const erzOrt = { x: klemm(burg.x + seite * (7 + 6 * zuf(5, 5, 5)), 8, B - 8), y: klemm(burg.y + oben * (15 + 5 * zuf(6, 6, 6)), 8, H - 8) };
   const steinOrt = { x: klemm(burg.x + seite * (13 + 5 * zuf(7, 7, 7)), 8, B - 8), y: klemm(burg.y - oben * (11 + 6 * zuf(8, 8, 8)), 8, H - 8) };

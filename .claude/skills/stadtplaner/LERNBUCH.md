@@ -77,3 +77,45 @@ Vorher (gleicher Zähler, Feldwege noch als Gasse): 13 / 9 / 13 Sackgassen.
 
 **Offen für Runde 3:** Seed 7 hat 0,51 Knicke — Ursache suchen (vermutlich Hangstraßen am Burgberg);
 Platz- und Kreuzungsaufweitungen (Dreiecksplätze an Gabelungen); Häuser an Kreuzungen über Eck stellen.
+
+---
+
+## 2026-11-13 — Runde 5: „Markt zu groß, Burg zu nah, Straßen wie Würmer, Kirche falsch platziert“
+
+**Beobachtung (Nutzer, mit Bild):** Kirche steht neben der Burg am Ufer, quer im Feld, ein Weg läuft unter ihr durch;
+Burg klebt am Markt; Wege sehen weiter wie Würmer aus statt wie Trampelpfade; Straßenführung teils unglücklich.
+
+**Ursachen:**
+1. Burg war nur ~8 Kacheln vom Markt (Gelände-Erzeugung), Kirche suchte den ersten freien Ring-Platz mit festem
+   Winkel 270° — ohne Blick auf Portal, Straße, Wasser. Ihr Anbindungsweg wand sich dann ums Gebäude.
+2. Handelsstraße nach dem Burgweg gebaut: A* nutzte den Burgweg (billig), `begradigen()` machte daraus eine zweite,
+   parallele Straße daneben (Textkarte: drei `=`-Reihen übereinander).
+3. Optik: dicker Strich + dunkle Kontur + Sinusschwingung = Schlauch. Pflaster je Punkt im Kernradius →
+   graue Flecken, wo eine Gasse den Radius nur streift.
+
+**Änderungen:**
+- Burg 17–23 Kacheln vom Markt; erst Handelsstraße, dann Burgweg; `nurNeuerTeil()` schneidet Anfang/Ende ab,
+  die schon auf Straße liegen → T-Kreuzung statt Parallelstraße.
+- Kirche: Kandidaten 3,5–10,5 Kacheln um den Markt × Winkel 240–300°; Pflicht: Portal ≤ 3 Kacheln von Straße,
+  nicht im Wasser; Wert = Abstand + Portalabstand×1500 + Winkelabweichung×60 + Wasser×900.
+- Wege als Flächen: Ränder je Seite eigenes Rauschen (Erde 30 %, Kies 22 %, Pflaster 6 %), weiche Randzone (130 %
+  Breite, 22 % Deckkraft), keine Kontur, Mittellinie nur 5 % Schwingung. Gassen ganz oder gar nicht gepflastert.
+
+**Messung (Tag 20, kluger Bot):**
+| Seed | Knicke/10 Kacheln | Gassen-Sackgassen |
+|---|---|---|
+| 42 | 0,37 → 0,32 | 3 → 5 |
+| 7 | 0,51 → 0,51 | 2 → 2 |
+| 99 | 0,44 → 0,40 | 1 → 4 |
+Start Seed 42: Straßen 6 → 8, Sackgassen 1 → 0. Mehr Sackgassen an Tag 20, weil die Stadt jetzt ohne Burg-Nachbarschaft
+in andere Richtungen wächst — nächste Runde ansehen.
+
+**Lehren:**
+- Reihenfolge des Straßenbaus zählt: erst die Achse (Handelsstraße), dann Anschlüsse; jeder neue Weg nur ab der
+  Stelle, wo er das Netz verlässt.
+- Bedeutende Gebäude brauchen eine **Beziehung** (Portal zur Straße, Front zum Platz), nicht nur einen freien Fleck.
+- „Wurm“ ist vor allem eine Frage der Kanten: parallele, glatte Ränder + Kontur. Unregelmäßige, weiche Ränder
+  machen auch gerade Wege natürlich.
+
+**Offen für Runde 6:** Sackgassen an Tag 20 (42: 5, 99: 4) senken; Seed 7 Knicke; Pflaster-Gassen an der Grenze
+(Mitte knapp innerhalb 7 Kacheln) prüfen.

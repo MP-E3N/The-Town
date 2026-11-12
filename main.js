@@ -95,7 +95,12 @@ function zeichneBild(jetzt) {
   const alpha = verbindung.pause ? 1 : Math.min(1, akku / msProTick);
   const dtSpiel = verbindung.pause || zustand.ergebnis ? 0 : dt / 1000 * verbindung.tempo;
   zeichneSzene(szene, zustand, kamera, ui, alpha, dtSpiel, dt / 1000);
-  if (jetzt - letztePanels > 250) { panels.aktualisiere(); letztePanels = jetzt; }
+  if (jetzt - letztePanels > 250) {
+    panels.aktualisiere(); letztePanels = jetzt;
+    // Freie Bildfläche für Randpfeile (Angriffsmarker) neben den Leisten
+    const re = document.getElementById('rechts').getBoundingClientRect(), ob = document.getElementById('oben').getBoundingClientRect();
+    ui.rand = { r: re.width ? innerWidth - re.left : 0, o: ob.bottom, l: 0 };
+  }
   panels.tipp();
   if (zustand.ergebnis && !endeGezeigt) zeigeEnde();
 }

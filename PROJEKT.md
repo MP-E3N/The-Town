@@ -16,9 +16,9 @@ powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr
 | Was | Wie |
 |---|---|
 | Land ausschreiben | links Wohnland / Acker / Weide / Forst / Bergbau wählen, mit gedrückter linker Taste malen |
-| Militär bauen | Kaserne, Wachturm, Waffenschmiede, Speicher; Palisade/Steinmauer Punkt für Punkt (über Straßen → Tor) |
+| Militär bauen | Kaserne, Wachturm, Waffenschmiede, Speicher; Palisade/Steinmauer Punkt für Punkt, rastet an Mauerenden ein (über Straßen → Torhaus) |
 | Rekrutieren | Burg/Kaserne anklicken → +1/+5 Speerträger oder Bogenschützen; „automatisch auffüllen“ optional |
-| Soldaten führen | Rahmen ziehen / anklicken / G = alle, dann Rechtsklick: Boden = marschieren+halten, Räuber = angreifen, F = frei |
+| Soldaten führen | Rahmen ziehen / anklicken / G = alle, dann Rechtsklick: Boden = marschieren+halten, Räuber = angreifen, Mauer/Turm = Stellung beziehen, F = frei |
 | Lager | Maus drüber = Inhalt; anklicken = Waren umlagern |
 | Kamera | Mausrad zoomen, rechte/mittlere Taste ziehen oder WASD verschieben, H = zur Burg |
 | Zeit | Leertaste Pause, 1–3 Tempo |
@@ -32,8 +32,11 @@ powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr
 - **Lager:** Waren liegen in Speicher und Burg; verbraucht wird aus dem nächsten Lager; Speicher können brennen.
 - **Militär:** Speerträger und Bogenschützen, Burg 5 und Kaserne 10 Plätze; Rekrut = Waffe + 8 Gold + 1 Bewohner;
   Unterhalt 1 Nahrung + ⅓ Gold pro Tag. Wachtürme schießen. Räuberbanden ab Tag 9, werden größer.
-- **Stadtplaner:** gerade Straßen mit Bögen, Gassen als T-Abzweig mit Blocktiefe, dichte Bürgerhäuser am Markt,
-  Straßenmarkt mit Rathaus, Brunnen und Ständen, Kirche geostet.
+- **Stadtplaner:** gerade Straßen mit Bögen, Wege als ausgetretene Trampelpfade, Gassen als T-Abzweig mit Blocktiefe, dichte Bürgerhäuser am Markt,
+  Straßenmarkt mit Rathaus, Brunnen und Ständen, Kirche mit Portal zur Straße; Burg abseits auf ihrem Hügel.
+- **Mauern:** Rasterpunkte zum Ansetzen (Mauern und Wachtürme rasten ein), Torhaus mit zwei Türmen, wo eine Straße
+  die Mauer kreuzt; Soldaten beziehen per Rechtsklick Stellung auf Mauer/Turm/Torhaus. Rote Nadeln zeigen Angreifer.
+- **Kollision:** niemand läuft durch Gebäude, Mauern oder die Burg (nur durchs Tor); übers Wasser nur auf der Brücke.
 
 ## Technik
 - Reines JavaScript (ES-Module), kein Build, keine Bibliotheken, keine Bilddateien — alle Sprites werden beim Start

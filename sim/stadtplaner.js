@@ -58,6 +58,19 @@ export function ecktenRunden(p) {
   return out;
 }
 
+/**
+ * Schneidet vorne und hinten ab, was schon auf vorhandener Straße liegt (die letzte Straßenkachel bleibt als
+ * Anschluss). WARUM: Die Wegsuche nutzt bestehende Straßen gern (billig); begradigt würde daraus eine zweite,
+ * parallele Straße daneben. So zweigt die neue Straße dort ab, wo sie die alte wirklich verlässt.
+ */
+export function nurNeuerTeil(z, pfad) {
+  const c = abgeleitet(z);
+  let a = 0, b = pfad.length - 1;
+  while (a + 1 < b && c.strasse[pfad[a]] && c.strasse[pfad[a + 1]]) a++;
+  while (b - 1 > a && c.strasse[pfad[b]] && c.strasse[pfad[b - 1]]) b--;
+  return pfad.slice(a, b + 1);
+}
+
 /** Kachelweg → wenige gerade Strecken (weitest sichtbarer Punkt), dann Ecken runden. */
 export function begradigen(z, pfad, start, ende) {
   const k = karteFuer(z.seed), c = abgeleitet(z);

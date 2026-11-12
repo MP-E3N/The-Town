@@ -1,7 +1,8 @@
 /**
  * sim.test.js — Tests ohne Browser: node tests/sim.test.js
  *
- * Prüft: Startstadt, Determinismus, Abspielen einer Aufnahme, Speichern/Laden (JSON),
+ * Prüft: Startstadt, Determinismus, Abspielen einer Aufnahme, Speichern/Laden (JSON), Kollision, Torhaus,
+ *        Mauerbesatzung,
  *        Befehls-Prüfung, Überfall wird abgewehrt, Balance (kluger Bot gewinnt, Nichtstun nicht).
  */
 
@@ -13,6 +14,9 @@ import { stadtStatus } from '../sim/baumeister.js';
 import { befehlAnwenden } from '../sim/befehle.js';
 import { klugerBot, nichtsBot } from './bots.js';
 import { summieren } from '../sim/lager.js';
+import { begehbar, findePfad } from '../sim/pfad.js';
+import { kachel } from '../sim/lib.js';
+import { karteFuer } from '../sim/karte.js';
 
 let fehler = 0;
 function pruefe(name, ok, info = '') {
@@ -110,6 +114,50 @@ function lauf(seed, bot, tage) {
   for (let i = 0; i < 3000; i++) tick(z, []);
   const b = z.banden[0];
   pruefe('Erster Überfall wird abgewehrt', b && !b.aktiv && z.einheiten.every((u) => u.art === 'soldat'), b ? `Beute zurück ${b.beuteZurueck}` : 'keine Bande');
+}
+
+// 4b) Niemand steht in Gebäuden, Mauern oder im Wasser (Soldaten, Räuber; Mauerbesatzung ausgenommen)
+{
+  const z = erzeugeZustand(7), bot = klugerBot();
+  z.naechsterUeberfall = 1200;
+  let schlecht = 0, gesamt = 0, bsp = '';
+  for (let i = 0; i < 600 * 12; i++) {
+    const b = []; bot(z, (x) => b.push({ ...x, spieler: 0 })); tick(z, b);
+    if (i % 10) continue;
+    for (const u of z.einheiten) {
+      if (u.mauerPlatz >= 0) continue;
+      gesamt++;
+      if (!begehbar(z, kachel(u.x, u.y), u.art === 'raeuber' ? 'raeuber' : 'buerger')) { schlecht++; bsp = `${u.art} bei ${Math.round(u.x / 1000)},${Math.round(u.y / 1000)}`; }
+    }
+  }
+  pruefe('Kollision: niemand in Gebäuden/Mauern/Wasser', schlecht === 0 && gesamt > 500, `${schlecht} von ${gesamt} ${bsp}`);
+  const k = karteFuer(7), burg = z.gebaeude[z.herren[0].burg], markt = z.gebaeude[z.herren[0].markt];
+  pruefe('Burg steht abseits (≥ 15 Kacheln vom Markt)', Math.hypot(burg.x - markt.x, burg.y - markt.y) >= 15000);
+  void k;
+}
+
+// 4c) Mauer über die Straße → Torhaus; Soldaten beziehen Stellung auf der Mauer und steigen wieder herab
+{
+  const z = erzeugeZustand(42);
+  const h = z.herren[0], burg = z.gebaeude[h.burg], m = z.gebaeude[h.markt];
+  burg.inhalt.stein += 200; summieren(z, 0);
+  befehlAnwenden(z, { typ: 'mauer', art: 'mauer', ax: m.x - 9000, ay: m.y - 5000, bx: m.x - 9000, by: m.y + 5000, spieler: 0 });
+  const stuecke = z.gebaeude.filter((g) => g.art === 'mauer' || g.art === 'tor');
+  for (const g of stuecke) { g.zustand = 'fertig'; g.hp = g.hpMax; }
+  z.version++;
+  const tore = stuecke.filter((g) => g.art === 'tor');
+  pruefe('Torhaus, wo die Mauer die Straße kreuzt (genau eins)', tore.length === 1 && tore[0].b >= 3000 && tore[0].material === 'mauer', `${tore.length} Tore`);
+  const durch = findePfad(z, kachel(m.x - 14000, m.y), kachel(m.x - 3000, m.y), 'buerger');
+  pruefe('Bürger gehen durchs Tor', !!durch && durch.length < 16);
+  pruefe('Rasterpunkte: jedes Mauerstück kennt seine Enden', stuecke.every((g) => g.ende && g.ende.length === 4));
+  const ids = z.einheiten.filter((u) => u.art === 'soldat').map((u) => u.id);
+  befehlAnwenden(z, { typ: 'einheiten', ids, aktion: 'mauer', id: tore[0].id, spieler: 0 });
+  for (let i = 0; i < 900; i++) tick(z, []);
+  const oben = z.einheiten.filter((u) => ids.includes(u.id) && u.mauerPlatz >= 0).length;
+  pruefe('Soldaten stehen auf der Mauer', oben === ids.length, `${oben}/${ids.length}`);
+  befehlAnwenden(z, { typ: 'einheiten', ids, aktion: 'frei', spieler: 0 });
+  for (let i = 0; i < 5; i++) tick(z, []);
+  pruefe('… und steigen auf Befehl wieder herab', z.einheiten.filter((u) => ids.includes(u.id)).every((u) => u.mauerPlatz < 0 && begehbar(z, kachel(u.x, u.y), 'buerger')));
 }
 
 // 5) Balance
