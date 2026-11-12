@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lehnsherr von Eschenbrück</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="welt"></canvas>
+
+  <header id="oben">
+    <div class="titel">Burg <b>Eschenbrück</b></div>
+    <div id="datum"></div>
+    <div id="waren"></div>
+    <div id="tempo">
+      <button data-tempo="0" title="Pause (Leertaste)">❚❚</button>
+      <button data-tempo="1" title="Tempo 1 (Taste 1)">▶</button>
+      <button data-tempo="2" title="Tempo 2 (Taste 2)">▶▶</button>
+      <button data-tempo="4" title="Tempo 4 (Taste 3)">▶▶▶</button>
+    </div>
+    <button id="hilfeKnopf" title="Hilfe">?</button>
+  </header>
+
+  <aside id="links">
+    <h2>Land ausschreiben</h2>
+    <div id="zonenKnoepfe" class="knopfgitter"></div>
+    <label class="pinsel">Pinsel <input id="pinsel" type="range" min="1" max="7" value="3"> <span id="pinselWert">3</span></label>
+    <h2>Befehle des Herrn</h2>
+    <div id="auftragKnoepfe" class="knopfgitter"></div>
+    <div id="werkzeugHinweis" class="hinweis"></div>
+  </aside>
+
+  <aside id="rechts">
+    <nav id="reiter">
+      <button data-reiter="stadt" class="an">Stadt</button>
+      <button data-reiter="chronik">Chronik</button>
+    </nav>
+    <div id="seite-stadt" class="seite"></div>
+    <div id="seite-chronik" class="seite versteckt"></div>
+  </aside>
+
+  <div id="info" class="versteckt"></div>
+  <div id="meldungen"></div>
+  <div id="tipp" class="versteckt"></div>
+
+  <div id="intro" class="overlay">
+    <div class="karte-papier">
+      <h1>Lehnsherr von Eschenbrück</h1>
+      <p class="unter">Herzogtum Ilmgau, im Jahr der ersten Belehnung</p>
+      <p>Der Herzog hat dir <b>Burg Eschenbrück</b> und die Stadt am <b>Ilmbach</b> zu Lehen gegeben.
+        Dreißig Seelen, zwei Höfe, ein Holzfäller und drei Burgwachen. Im Wald hausen Räuber.</p>
+      <p><b>Ziel:</b> Die Stadt muss <b>5 Tage am Stück satt</b> sein und du stellst eine <b>Garnison von 25 Mann</b>.</p>
+      <ul>
+        <li><b>Du bist nicht der Stadtplaner.</b> Du <b>schreibst Land aus</b> (links: Wohnland, Acker, Weide, Forst,
+          Bergbau) — der Baumeister legt dort Gassen, Höfe, Felder und Häuser selbst an, wenn Leute, Holz und Bedarf da sind.</li>
+        <li><b>Militär gibst du selbst in Auftrag:</b> Kaserne, Wachturm, Waffenschmiede, Palisade, Steinmauer.
+          Soldaten brauchen Waffen (Holz + Eisen aus der Erzgrube), Gold und freie Bewohner.</li>
+        <li><b>Vier Bedürfnisse:</b> Nahrung, Unterkunft, Wärme (Brennholz im Herbst/Winter), Sicherheit.
+          Zufriedene Städte wachsen. <b>Felder tragen nur einmal im Jahr</b> — der Winter lebt vom Vorrat.</li>
+        <li><b>Maus:</b> Rad = zoomen (ganz nah ran!), ziehen = verschieben, Linksklick = auswählen/anwenden,
+          Rechtsklick/Esc = Werkzeug ab. <b>Q/E</b> drehen beim Bauen. <b>Leertaste</b> Pause, <b>1–3</b> Tempo, <b>Z</b> Zonen zeigen.</li>
+        <li>Mauern: Startpunkt klicken, weitere Punkte klicken — wo eine Straße kreuzt, entsteht ein Tor.</li>
+      </ul>
+      <button id="start">Lehen antreten</button>
+    </div>
+  </div>
+
+  <div id="ende" class="overlay versteckt">
+    <div class="karte-papier">
+      <h1 id="endeTitel"></h1>
+      <p id="endeText"></p>
+      <p id="endeStatistik"></p>
+      <button id="weiter">Weiterspielen</button>
+      <button id="nochmal">Neues Lehen</button>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

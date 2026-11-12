@@ -1,0 +1,88 @@
+/* Lehnsherr — schlichte Pergament-/Holz-Oberfläche über der Karte. */
+:root {
+  --panel: rgba(28, 22, 16, 0.88);
+  --rand: #6b5636;
+  --text: #f1e7cf;
+  --text2: #b9a888;
+  --gut: #7fcf6f;
+  --schlecht: #e46450;
+  --warn: #e8b050;
+  --gold: #e8c86a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #1b2a33; color: var(--text);
+  font: 13px/1.35 "Segoe UI", system-ui, sans-serif; user-select: none; }
+#welt { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+#welt.ziehen { cursor: grabbing; }
+#welt.werkzeug { cursor: crosshair; }
+button { font: inherit; color: var(--text); background: #3a3024; border: 1px solid var(--rand);
+  border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+button:hover { background: #4d3f2c; }
+button.an { background: #7a6038; color: #fff; border-color: var(--gold); }
+button:disabled { opacity: 0.45; cursor: default; }
+.versteckt { display: none !important; }
+
+#oben { position: fixed; top: 0; left: 0; right: 0; height: 42px; display: flex; align-items: center; gap: 16px;
+  padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--rand); z-index: 5; }
+#oben .titel { font-family: Georgia, serif; font-size: 16px; color: var(--gold); white-space: nowrap; }
+#datum { white-space: nowrap; color: var(--text2); min-width: 170px; }
+#waren { display: flex; gap: 12px; white-space: nowrap; }
+#waren span { display: inline-flex; gap: 3px; align-items: center; }
+#waren .knapp { color: var(--schlecht); }
+#tempo { margin-left: auto; display: flex; gap: 3px; }
+
+#links, #rechts { position: fixed; top: 50px; width: 236px; background: var(--panel);
+  border: 1px solid var(--rand); border-radius: 6px; z-index: 4; padding: 8px; max-height: calc(100% - 60px); overflow-y: auto; }
+#links { left: 8px; }
+#rechts { right: 8px; width: 300px; }
+h2 { font: 14px Georgia, serif; color: var(--gold); margin: 4px 0 6px; }
+h3 { font: 13px Georgia, serif; color: var(--gold); margin: 10px 0 4px; }
+.knopfgitter { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
+.knopfgitter button { text-align: left; padding: 4px 6px; font-size: 12px; line-height: 1.2; }
+.knopfgitter button small { display: block; color: var(--text2); font-size: 10.5px; }
+.knopfgitter button.an small { color: #f0e0c0; }
+.farbe { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; border: 1px solid #0006; }
+.pinsel { display: flex; align-items: center; gap: 6px; color: var(--text2); margin: 2px 0 8px; }
+.pinsel input { flex: 1; }
+.hinweis { color: var(--text2); font-size: 12px; min-height: 2.6em; border-top: 1px solid #4a3d2a; padding-top: 6px; }
+
+#reiter { display: flex; gap: 4px; margin-bottom: 8px; }
+.seite { font-size: 12.5px; }
+.zeile { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
+.zeile .w { color: var(--text2); }
+.bed { margin: 5px 0; }
+.bed .kopf { display: flex; justify-content: space-between; }
+.balken { height: 8px; background: #000a; border-radius: 4px; overflow: hidden; margin-top: 2px; }
+.balken i { display: block; height: 100%; transition: width 0.4s; }
+.ziel { background: #2a2219; border: 1px solid #5a4830; border-radius: 5px; padding: 6px 8px; margin-bottom: 8px; }
+.ziel .ok { color: var(--gut); }
+.klein { color: var(--text2); font-size: 11.5px; }
+.log { font-size: 11.5px; color: var(--text2); max-height: 150px; overflow-y: auto; }
+.log div { margin: 1px 0; }
+.steuer { display: flex; gap: 3px; }
+.steuer button { flex: 1; padding: 2px 4px; font-size: 12px; }
+.chronik div { padding: 2px 0; border-bottom: 1px solid #3a3024; }
+.chronik .gefahr, .m.gefahr { color: #ff8a70; font-weight: 600; }
+.chronik .schlecht, .m.schlecht { color: var(--schlecht); }
+.chronik .warn, .m.warn { color: var(--warn); }
+.chronik .gut, .m.gut { color: var(--gut); }
+
+#info { position: fixed; left: 50%; transform: translateX(-50%); bottom: 10px; min-width: 300px; max-width: 520px;
+  background: var(--panel); border: 1px solid var(--rand); border-radius: 6px; padding: 8px 12px; z-index: 4; }
+#info h3 { margin: 0 0 4px; }
+#info .knoepfe { margin-top: 6px; display: flex; gap: 6px; }
+
+#meldungen { position: fixed; left: 50%; transform: translateX(-50%); top: 52px; z-index: 6; display: flex; flex-direction: column; gap: 4px; align-items: center; pointer-events: none; }
+#meldungen .m { background: rgba(28,22,16,0.92); border: 1px solid var(--rand); border-radius: 5px; padding: 4px 12px;
+  animation: ein 0.25s ease-out; max-width: 560px; }
+@keyframes ein { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; } }
+#tipp { position: fixed; z-index: 7; pointer-events: none; background: rgba(20,16,12,0.92); border: 1px solid var(--rand);
+  border-radius: 4px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
+
+.overlay { position: fixed; inset: 0; background: rgba(10,8,6,0.55); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.karte-papier { background: #efe4c8; color: #2a2118; border-radius: 8px; padding: 22px 30px; max-width: 680px;
+  box-shadow: 0 10px 40px #0009; border: 2px solid #8a6a3a; }
+.karte-papier h1 { font: 26px Georgia, serif; margin: 0 0 2px; color: #4a2a10; }
+.karte-papier .unter { margin: 0 0 12px; color: #6a5030; font-style: italic; }
+.karte-papier li { margin: 4px 0; }
+.karte-papier button { background: #6a4a24; color: #fff; padding: 8px 18px; font-size: 15px; margin-top: 8px; }
