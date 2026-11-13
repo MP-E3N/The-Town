@@ -7,7 +7,7 @@
   Tag `sicherung-vor-arbeitern` (Sicherung auf Nutzerwunsch, NICHT gepusht). Teil 2 (Arbeiterzahlen) liegt danach
   uncommittet bzw. im nächsten Commit. Zurück zur Balance vor Runde 9: `git checkout sicherung-vor-arbeitern -- data/ sim/wirtschaft.js sim/baumeister.js`.
 - Runden 9b–11 lokal committet 8eafd1e (Tag `sicherung-vor-herr-und-stadt`, nicht gepusht). Runde 12 VERWORFEN
-  (Patch in `.claude/team/archiv/`), Runde 13 uncommittet. Tests: „ALLES GRUEN“ (≈ 9 s), 70 Prüfungen.
+  (Patch in `.claude/team/archiv/`), Runde 13 committet + gepusht 51bb43b (zusammen mit 19e88f5, 8eafd1e). Tests: „ALLES GRUEN“ (≈ 9 s), 70 Prüfungen.
   Bot 42@25 7@27 99@26 5@26 1234@24.
 - (Runde 9:) 57 Prüfungen. Kluger Bot gewinnt 5/5, seit den Arbeiterzahlen
   aber später: vorher 42@23 7@23 99@29 5@21 1234@21 → nachher 42@28 7@24 99@39 5@23 1234@35. „Nichtstun“ gewinnt nicht.
