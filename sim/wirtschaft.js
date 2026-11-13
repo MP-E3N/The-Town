@@ -17,7 +17,7 @@ import { nehmen, geben, naechstesLager, hatKosten, bezahleKosten } from './lager
 import { karteFuer } from './karte.js';
 import { abgeleitet } from './abgeleitet.js';
 import { wegGecached, pfadLaenge } from './pfad.js';
-import { tuer, tuerKachel, stadtStatus } from './baumeister.js';
+import { tuer, tuerKachel, stadtStatus, feldProzent, viehTakt } from './baumeister.js';
 import { abstand, datum, ereignis, meldung, kachel } from './lib.js';
 import { neuerSoldat, soldatenVon } from './militaer.js';
 
@@ -43,10 +43,26 @@ function feldAufgabe(z, g) {
   return null;
 }
 
+/**
+ * Feldpflege: Solange nichts zu säen oder zu ernten ist, hackt und jätet ein Bauer das wachsende Feld mit der
+ * geringsten Pflege. WARUM: Früher standen die Höfe zwischen Saat und Ernte leer; echte Bauern hielten in
+ * dieser Zeit Unkraut, Steine und Vögel vom Acker fern — das bringt hier mehr Ertrag (FELD.pflegeBonus).
+ */
+export function pflegeFeld(z, g) {
+  let best = null;
+  for (const id of g.felder) {
+    const f = z.felder[id];
+    if (f.weg || f.art !== 'acker' || f.phase !== 'wachsend' || (f.pflege || 0) >= 100) continue;
+    if (!best || (f.pflege || 0) < (best.pflege || 0)) best = f;
+  }
+  g.pflegeFeld = best ? best.id : -1;
+  return best;
+}
+
 /** Braucht das Gebäude gerade Arbeiter? */
 function hatArbeit(z, g, h) {
   const typ = GEBAEUDE[g.art];
-  if (g.art === 'hof') return !!feldAufgabe(z, g);
+  if (g.art === 'hof') return !!feldAufgabe(z, g) || !!pflegeFeld(z, g);
   if (g.puffer >= TRAGEN * 2) return false;
   if (g.art === 'schmiede' && !g.material && !hatKosten(h, SCHMIEDE_PRODUKTE[g.produkt || 'speere'].material)) return false;
   if (g.blockiert && z.tick % 600 !== 0) return false;
@@ -67,7 +83,9 @@ export function arbeitVerteilen(z, herr) {
   baustellen.sort((a, b) => (Number(b.auftrag) - Number(a.auftrag)) || (a.id - b.id));
   const besetze = (g) => {
     if (!hatArbeit(z, g, h)) return;
-    const n = Math.min(GEBAEUDE[g.art].arbeiter, frei);
+    // Zur Feldpflege genügt ein Bauer; der zweite hat frei (hilft auf Baustellen, kann rekrutiert werden).
+    const max = g.art === 'hof' && !feldAufgabe(z, g) ? 1 : GEBAEUDE[g.art].arbeiter;
+    const n = Math.min(max, frei);
     g.belegt = n; frei -= n;
   };
   for (const g of betriebe) if (GEBAEUDE[g.art].gruppe <= 1) besetze(g);
@@ -128,7 +146,7 @@ function produktion(z) {
         if (hatKosten(h, mat)) { bezahleKosten(z, g.besitzer, mat, g.x, g.y); g.material = 1; g.materialFuer = g.produkt || 'speere'; } else continue;
       }
       g.fortschritt += g.belegt;
-      let tpe = typ.ticksProEinheit;
+      let tpe = g.art === 'viehhof' ? viehTakt(z, g) : typ.ticksProEinheit;
       if (g.art === 'fischer' && jz === 3) tpe *= 3;
       if (g.fortschritt >= tpe) {
         g.fortschritt -= tpe;
@@ -167,16 +185,27 @@ function produktion(z) {
 function hofArbeit(z, g) {
   if (g.belegt <= 0) return;
   const f = feldAufgabe(z, g);
-  if (!f) return;
+  if (!f) {
+    let p = g.pflegeFeld >= 0 ? z.felder[g.pflegeFeld] : null;
+    if (!p || p.weg || p.phase !== 'wachsend' || (p.pflege || 0) >= 100) p = pflegeFeld(z, g);
+    if (!p) return;
+    g.pflegeArbeit = (g.pflegeArbeit || 0) + g.belegt;
+    const takt = Math.max(5, Math.floor(FELD.pflegeTicks * feldProzent(p) / 100));
+    if (g.pflegeArbeit >= takt) { g.pflegeArbeit -= takt; p.pflege = Math.min(100, (p.pflege || 0) + 1); }
+    return;
+  }
+  g.pflegeFeld = -1;
   g.aufgabe += g.belegt;
-  const noetig = f.phase === 'reif' ? FELD.ernteArbeit : FELD.saeArbeit;
+  // Große Felder brauchen länger (Arbeit wächst mit der Fläche)
+  const noetig = Math.floor((f.phase === 'reif' ? FELD.ernteArbeit : FELD.saeArbeit) * Math.max(50, feldProzent(f)) / 100);
   if (g.aufgabe < noetig) return;
   g.aufgabe = 0; g.aufgabeFeld = -1;
   if (f.phase === 'reif') {
     const k = karteFuer(z.seed);
     const fr = k.frucht[kachel(f.x, f.y)];
-    g.puffer += Math.floor(FELD.ertrag * (60 + fr) / 100);
-    f.phase = 'brach'; f.stand = 0;
+    const basis = Math.floor(FELD.ertrag * (60 + fr) * feldProzent(f) / 100);
+    g.puffer += Math.floor(basis * (100 + Math.floor((f.pflege || 0) * FELD.pflegeBonus / 100)) / 10000);
+    f.phase = 'brach'; f.stand = 0; f.pflege = 0;
     ereignis(z, { typ: 'ernte', feld: f.id });
   } else {
     f.phase = 'wachsend'; f.stand = 0;
@@ -310,7 +339,7 @@ export function tagesabschluss(z) {
   // Winteranfang: Ernte auf dem Feld verdirbt.
   if (d.jahreszeit === 3 && d.tagInZeit === 0) {
     let verdorben = 0;
-    for (const f of z.felder) if (!f.weg && f.art === 'acker' && f.phase !== 'brach') { if (f.phase === 'reif') verdorben++; f.phase = 'brach'; f.stand = 0; }
+    for (const f of z.felder) if (!f.weg && f.art === 'acker' && f.phase !== 'brach') { if (f.phase === 'reif') verdorben++; f.phase = 'brach'; f.stand = 0; f.pflege = 0; }
     for (let i = 0; i < z.herren.length; i++) {
       meldung(z, i, verdorben ? `Winter! ${verdorben} reife Felder wurden nicht geerntet und verderben.` : 'Der Winter beginnt. Jetzt zählt, was im Speicher liegt – und Brennholz.', verdorben ? 'warn' : 'info');
     }

@@ -21,7 +21,7 @@ const seed = Number(param.get('seed')) || (Math.floor(Math.random() * 90000) + 1
 const zustand = erzeugeZustand(seed);
 const verbindung = lokaleVerbindung(zustand);
 const kamera = neueKamera();
-const ui = { einheiten: new Set(), rahmen: null, befehlsZiel: null, trNach: '', trWare: 'nahrung', werkzeug: null, pinsel: 3, maus: null, mausSchirm: null, geist: null, mauerStart: null, auswahl: -1, unterMaus: -1, zonenZeigen: false, drehung: 0 };
+const ui = { einheiten: new Set(), rahmen: null, befehlsZiel: null, trNach: '', trWare: 'nahrung', werkzeug: null, pinsel: 3, maus: null, mausSchirm: null, geist: null, mauerStart: null, auswahl: -1, unterMaus: -1, zonenZeigen: false, drehung: 0, strassenPunkte: [], formation: null, strasseUnterMaus: -1 };
 let letztesTempo = 1;
 
 const canvas = document.getElementById('welt');
@@ -43,7 +43,7 @@ function setzeTempo(n) {
   panels.aktualisiere();
 }
 function werkzeug(w) {
-  ui.werkzeug = w; ui.mauerStart = null; ui.geist = null; ui.drehung = 0;
+  ui.werkzeug = w; ui.mauerStart = null; ui.strassenPunkte = []; ui.geist = null; ui.drehung = 0;
   canvas.classList.toggle('werkzeug', !!w);
   eingabe && eingabe.geistAktualisieren();
   panels.aktualisiere();
@@ -60,6 +60,7 @@ document.getElementById('start').addEventListener('click', () => {
   document.getElementById('intro').classList.add('versteckt');
   setzeTempo(1);
 });
+document.getElementById('cheatKnopf').addEventListener('click', () => { verbindung.senden({ typ: 'cheat' }); panels.aktualisiere(true); });
 document.getElementById('hilfeKnopf').addEventListener('click', () => {
   setzeTempo(0);
   document.getElementById('intro').classList.remove('versteckt');

@@ -139,10 +139,10 @@ export function erzeugeZustand(seed) {
   const handel = [];
   for (const links of [true, false]) {
     const p = findePfad(z, mk, randZiel(k, links, my), 'bau');
-    if (p) { strasseHinzufuegen(z, begradigen(z, nurNeuerTeil(z, p), null, null), 'haupt'); handel.push(p); }
+    if (p) { strasseHinzufuegen(z, begradigen(z, nurNeuerTeil(z, p), null, null), 'haupt', 'handel'); handel.push(p); }
   }
   const p1 = findePfad(z, tuerKachel(burg), mk, 'bau');
-  if (p1) strasseHinzufuegen(z, begradigen(z, nurNeuerTeil(z, p1), tuer(burg), null), 'haupt');
+  if (p1) strasseHinzufuegen(z, begradigen(z, nurNeuerTeil(z, p1), tuer(burg), null), 'haupt', 'burgweg');
   marktAnlegen(z, k, platz, burg, handel);
   // Erste Zonen
   const mx = Math.floor(k.markt.x / 1000);
@@ -158,13 +158,16 @@ export function erzeugeZustand(seed) {
   const setze = (art, n) => {
     for (let i = 0; i < n; i++) {
       let p = findePlatz(z, 0, art);
-      for (let v = 0; v < 6 && !p; v++) { if (!planeGasse(z, 0, GEBAEUDE[art].zone)) break; p = findePlatz(z, 0, art); }
+      // WARUM kein Abbruch beim ersten Fehlschlag: planeGasse merkt sich das Ziel und versucht beim nächsten Mal ein anderes.
+      for (let v = 0; v < 6 && !p; v++) { if (planeGasse(z, 0, GEBAEUDE[art].zone)) p = findePlatz(z, 0, art); }
       if (!p) break;
       gebaeudeAnlegen(z, 0, art, p.o, { sofort: true, felder: p.felder, wohn: p.wohn });
     }
   };
   setze('hof', START.hoefe);
   setze('holzfaeller', START.holzfaeller);
+  // Zweiter Versuch: Der Weg zum Holzfäller erschließt manchmal erst das Ackerland.
+  setze('hof', START.hoefe - z.gebaeude.filter((g) => g.art === 'hof').length);
   // Häuser, bis alle Startbewohner ein Dach haben (Bürgerhäuser am Markt fassen mehr)
   for (let n = 0; n < 10; n++) {
     const kap = z.gebaeude.reduce((a, g) => a + (g.art === 'haus' ? g.wohn || 5 : 0), 0);

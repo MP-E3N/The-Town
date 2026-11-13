@@ -81,8 +81,9 @@ function angreifen(z, u, ziel) {
   u.cd = k.takt;
   u.blick = winkelVon(ziel.x - u.x, ziel.y - u.y);
   const s = zufallZwischen(z, k.schaden[0], k.schaden[1]);
-  // WARUM halb: Wer hinter Zinnen steht, ist schwer zu treffen.
-  ziel.hp -= (ziel.mauerPlatz ?? -1) >= 0 ? Math.floor(s / 2) : s;
+  // Auf Mauer oder Turm: Nahkämpfer kommen nicht hinauf (kein Schaden), Fernkämpfer treffen hinter Zinnen nur halb.
+  const oben = (ziel.mauerPlatz ?? -1) >= 0, fern = k.reichweite > 2000;
+  ziel.hp -= oben ? (fern ? Math.floor(s / 2) : 0) : s;
   if (u.typ === 'bogen') ereignis(z, { typ: 'pfeil', vonEinheit: u.id, ax: u.x, ay: u.y, x: ziel.x, y: ziel.y });
 }
 
@@ -93,26 +94,55 @@ function kaempfe(z, u, e) {
   else bewegeZu(z, u, e.x, e.y, 'buerger', TEMPO.soldat);
 }
 
-function naechster(z, u, art, maxD) {
+function naechster(z, u, art, maxD, amBoden = false) {
   let best = null, bd = maxD * maxD;
   for (const e of z.einheiten) {
     if (e.art !== art || e.hp <= 0) continue;
+    if (amBoden && (e.mauerPlatz ?? -1) >= 0) continue;
     const d = abstand2(u.x, u.y, e.x, e.y);
     if (d < bd) { bd = d; best = e; }
   }
   return best;
 }
 
-function postenVon(z, u) {
+/** Burg oder Kaserne, in der ein Soldat geheilt wird: sein Heim, sonst die Burg. */
+function heilort(z, u) {
+  const g = z.gebaeude[u.heim];
+  if (g && g.zustand === 'fertig' && (g.art === 'burg' || g.art === 'kaserne')) return g;
+  return z.gebaeude[z.herren[u.besitzer].burg];
+}
+
+/** Steht u in oder an einer eigenen fertigen Burg/Kaserne? Dort heilt er schnell. */
+function amHeilort(z, u) {
+  for (const g of z.gebaeude) {
+    if (g.besitzer !== u.besitzer || g.zustand !== 'fertig' || (g.art !== 'burg' && g.art !== 'kaserne')) continue;
+    if (abstand(u.x, u.y, g.x, g.y) <= Math.max(g.b, g.t) / 2 + KAMPF.heilRadius) return true;
+  }
+  return false;
+}
+
+/** Ein Leben dazu: am Heilort jeden heilTakt-ten Tick, sonst nur jeden `draussen`-ten. */
+function heilen(z, u, draussen) {
+  if (u.hp >= u.hpMax) return;
+  if (amHeilort(z, u) ? z.tick % KAMPF.heilTakt === 0 : z.tick % draussen === 0) u.hp++;
+}
+
+function postenVon(z, u, ohneSammelpunkt = false) {
   const h = z.herren[u.besitzer];
   let mx, my, r;
-  if (h.sammelpunkt) { mx = h.sammelpunkt.x; my = h.sammelpunkt.y; r = 600 + (u.id % 3) * 450; }
+  if (h.sammelpunkt && !ohneSammelpunkt) { mx = h.sammelpunkt.x; my = h.sammelpunkt.y; r = 600 + (u.id % 3) * 450; }
   else {
     const g = z.gebaeude[u.heim] && z.gebaeude[u.heim].zustand === 'fertig' ? z.gebaeude[u.heim] : z.gebaeude[h.burg];
     if (g.art === 'burg') {
       // Im vorderen Burghof (zwischen Tor und Palas), nicht auf Dächern von Bergfried und Ställen
       return lokal(g, -2000 + ((u.id * 37) % 7) * 450, -2200 + ((u.id * 53) % 4) * 420);
     }
+    const p = tuer(g); mx = p.x; my = p.y; r = 500 + (u.id % 3) * 400;
+  }
+  if (ohneSammelpunkt && h.sammelpunkt) {
+    // Zum Heilen: an den Heilort (Heim oder Burg), nicht zum Sammelpunkt
+    const g = heilort(z, u);
+    if (g.art === 'burg') return lokal(g, -2000 + ((u.id * 37) % 7) * 450, -2200 + ((u.id * 53) % 4) * 420);
     const p = tuer(g); mx = p.x; my = p.y; r = 500 + (u.id % 3) * 400;
   }
   const w = (u.id * 73) % 360;
@@ -122,7 +152,18 @@ function postenVon(z, u) {
 /** Auf der Mauer: nicht von der Stelle, aber alles in Reichweite angreifen (Bogen +1,5, Speer +0,5 Kacheln). */
 function mauerWache(z, u) {
   u.zustand = 'mauer';
-  const reichweite = kampfwerte(u).reichweite + (u.typ === 'bogen' ? KAMPF.mauerReichweiteBogen : KAMPF.mauerReichweiteSpeer);
+  if (u.typ !== 'bogen') {
+    // Speerträger oben werfen Steine auf alles in Wurfweite (WARUM: sonst stünden sie auf der Mauer nutzlos herum)
+    const e = naechster(z, u, 'raeuber', KAMPF.steinwurf.reichweite);
+    if (e && u.cd <= 0) {
+      const sw = KAMPF.steinwurf;
+      u.cd = sw.takt; u.blick = winkelVon(e.x - u.x, e.y - u.y);
+      e.hp -= zufallZwischen(z, sw.schaden[0], sw.schaden[1]);
+      ereignis(z, { typ: 'stein', ax: u.x, ay: u.y, x: e.x, y: e.y });
+    } else if (!e && u.hp < u.hpMax && z.tick % 25 === 0) u.hp++;
+    return;
+  }
+  const reichweite = kampfwerte(u).reichweite + KAMPF.mauerReichweiteBogen;
   const e = naechster(z, u, 'raeuber', reichweite);
   if (e) angreifen(z, u, e);
   else if (u.hp < u.hpMax && z.tick % 25 === 0) u.hp++;
@@ -186,8 +227,12 @@ function soldatKI(z, u) {
       u.zustand = 'marsch';
       const r = bewegeZu(z, u, hb.x, hb.y, 'buerger', TEMPO.soldat);
       // 'da', aber nicht am Punkt: Der Punkt lag in einem Haus/im Wasser → hier stehen bleiben.
-      if (r === 'kein' || r === 'da') u.befehl = { typ: 'halten', x: u.x, y: u.y };
-    } else { u.zustand = 'halten'; if (u.hp < u.hpMax && z.tick % 30 === 0) u.hp++; }
+      if (r === 'kein' || r === 'da') u.befehl = hb.w !== undefined ? { typ: 'halten', x: u.x, y: u.y, w: hb.w } : { typ: 'halten', x: u.x, y: u.y };
+    } else {
+      // Formation: in die gezogene Richtung schauen
+      u.zustand = 'halten'; if (hb.w !== undefined) u.blick = hb.w;
+      heilen(z, u, 30);
+    }
     return;
   }
   const e = naechster(z, u, 'raeuber', (LAND_RADIUS + 8) * 1000);
@@ -195,14 +240,18 @@ function soldatKI(z, u) {
     kaempfe(z, u, e);
     return;
   }
-  const p = postenVon(z, u);
+  // Kein Kampf: Verwundete (unter heilenAb %) gehen zum Heilen in Burg/Kaserne, auch wenn ein Sammelpunkt gilt;
+  // sie bleiben dort, bis sie wieder ganz gesund sind.
+  if (u.hp * 100 < u.hpMax * KAMPF.heilenAb) u.heilen = true;
+  if (u.heilen && u.hp >= u.hpMax) u.heilen = false;
+  const p = postenVon(z, u, !!u.heilen);
   if (abstand(u.x, u.y, p.x, p.y) > 300) {
     u.zustand = 'marsch';
     if (bewegeZu(z, u, p.x, p.y, 'buerger', TEMPO.soldat) === 'kein') { u.x = p.x; u.y = p.y; }
   } else {
-    u.zustand = 'ruhe';
-    if (u.hp < u.hpMax && z.tick % 20 === 0) u.hp++;
+    u.zustand = u.heilen ? 'heilen' : 'ruhe';
   }
+  heilen(z, u, 20);
 }
 
 function waehleZiel(z, u) {
@@ -252,7 +301,8 @@ function raeuberKI(z, u) {
   const bande = z.banden[u.bande];
   if (bande.flucht && u.zustand !== 'flucht') { u.zustand = 'flucht'; u.pfad = null; }
   if (u.zustand !== 'flucht' || u.hp < u.hpMax / 2) {
-    const s = naechster(z, u, 'soldat', KAMPF.sichtRaeuber);
+    // WARUM nur Soldaten am Boden: Auf Mauer und Turm kommen Räuber mit Knüppel und Messer nicht hinauf.
+    const s = naechster(z, u, 'soldat', KAMPF.sichtRaeuber, true);
     if (s) {
       if (abstand(u.x, u.y, s.x, s.y) <= KAMPF.raeuber.reichweite) angreifen(z, u, s);
       else bewegeZu(z, u, s.x, s.y, 'raeuber', TEMPO.raeuber);

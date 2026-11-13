@@ -311,6 +311,19 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
       }
       break;
     }
+    case 'eckturm_mauer': {
+      // Runder Mauerturm am Ende einer Steinmauer (Wasser, Kartenrand, Fels): schließt die Lücke
+      turmRund(ctx, w / 2, h / 2, Math.min(w, h) / 2 - 2);
+      break;
+    }
+    case 'eckturm_palisade': {
+      // Hölzerner Eckturm am Ende einer Palisade: Bohlenkasten mit Schindeldach
+      const s = Math.min(w, h) - 4;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(w / 2 - s / 2 + 2, h / 2 - s / 2 + 2, s, s);
+      ctx.fillStyle = '#4a321c'; ctx.fillRect(w / 2 - s / 2, h / 2 - s / 2, s, s);
+      satteldach(ctx, w / 2 - s / 2 + 2, h / 2 - s / 2 + 2, s - 4, s - 4, 'schindel', r);
+      break;
+    }
     case 'platz': {
       // Straßenmarkt: länglicher, gepflasterter Platz entlang der Handelsstraße (u-Achse = Bildbreite)
       const rnd2 = rnd(4711);
@@ -322,18 +335,9 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
       ctx.lineTo(w - 3, h - rx); ctx.quadraticCurveTo(w - 3, h - 3, w - rx, h - 3); ctx.lineTo(rx, h - 3);
       ctx.quadraticCurveTo(3, h - 3, 3, h - rx); ctx.lineTo(3, h * 0.64); ctx.lineTo(1, h * 0.5); ctx.lineTo(3, h * 0.36); ctx.lineTo(3, rx);
       ctx.quadraticCurveTo(3, 3, rx, 3); ctx.closePath();
-      ctx.fillStyle = '#7a705e'; ctx.fill();
+      // WARUM kein Pflaster im Bild: Den Platzboden zeichnet szene.js mit DEMSELBEN Pflaster wie die Straßen
+      // (zeichneStrassen, Lage „pflaster“) — sonst stießen zwei verschiedene Steinmuster aneinander.
       ctx.clip();
-      ctx.fillStyle = '#a39a86'; ctx.fillRect(0, 0, w, h);
-      // Kopfsteinpflaster in versetzten Reihen
-      const st = 5.2;
-      for (let y = 0, r = 0; y < h + st; y += st * 0.82, r++) {
-        for (let x = (r % 2) * st / 2; x < w + st; x += st) {
-          const f = 0.78 + rnd2() * 0.38;
-          ctx.fillStyle = css(hell([170, 160, 140], f));
-          ctx.beginPath(); ctx.ellipse(x + (rnd2() - 0.5), y + (rnd2() - 0.5), st * 0.44, st * 0.36, rnd2() * 3, 0, 7); ctx.fill();
-        }
-      }
       // ausgefahrene Mitte (Handelsweg) und Rinne
       ctx.fillStyle = 'rgba(120,96,64,0.22)'; ctx.fillRect(0, h * 0.42, w, h * 0.16);
       ctx.strokeStyle = 'rgba(70,60,50,0.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, h * 0.5); ctx.lineTo(w, h * 0.5); ctx.stroke();

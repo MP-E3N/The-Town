@@ -36,6 +36,7 @@
       <button data-tempo="2" title="Tempo 2 (Taste 2)">▶▶</button>
       <button data-tempo="4" title="Tempo 4 (Taste 3)">▶▶▶</button>
     </div>
+    <button id="cheatKnopf" data-tipp="Testhilfe: +200 von jeder Ware in die Burg">🎁 +200</button>
     <button id="hilfeKnopf" title="Hilfe">?</button>
   </header>
 
@@ -45,6 +46,8 @@
     <label class="pinsel">Pinsel <input id="pinsel" type="range" min="1" max="7" value="3"> <span id="pinselWert">3</span></label>
     <h2>Befehle des Herrn</h2>
     <div id="auftragKnoepfe" class="knopfgitter"></div>
+    <h2>Straßen</h2>
+    <div id="strassenKnoepfe" class="knopfgitter"></div>
     <div id="werkzeugHinweis" class="hinweis"></div>
   </aside>
 
@@ -84,6 +87,11 @@
         <li><b>Burg, Kaserne, Schmiede, Speicher anklicken:</b> wer ausgebildet wird (Speerträger/Bogenschützen), was die Schmiede
           macht (Speere/Bögen), was im Lager liegt und Waren umlagern. Maus über ein Lager zeigt den Inhalt.</li>
         <li>Bauen: Q/E dreht, Rechtsklick/Esc legt das Werkzeug weg.</li>
+        <li><b>Straßen</b> (links): Feldweg, Gasse oder Hauptstraße wählen, Punkte klicken; Rechtsklick, Doppelklick oder
+          Enter legt sie an (rastet an Straßen ein). „Umwidmen“ und „Entfernen“ per Klick auf eine Straße.</li>
+        <li><b>Formation:</b> Soldaten wählen, dann <b>rechte Taste gedrückt halten und ziehen</b> — die Linie ist die Front:
+          lang = breite Linie, kurz = kompakter Block. Von links nach rechts gezogen schauen sie nach oben.
+          Speerträger stehen vorn, Bogenschützen dahinter.</li>
         <li>Mauern: Startpunkt klicken, weitere Punkte klicken — wo eine Straße kreuzt, entsteht ein Tor.</li>
       </ul>
       <button id="start">Lehen antreten</button>

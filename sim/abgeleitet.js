@@ -82,7 +82,12 @@ function baue(z) {
     }
     inEimer(eimer, g, { typ: 'g', id: g.id });
   }
-  for (const g of z.gebaeude) if (g.art === 'tor' && g.zustand === 'fertig') mauerRastern(mauer, g);
+  for (const g of z.gebaeude) {
+    if (g.art !== 'tor' || g.zustand !== 'fertig') continue;
+    // Tor quer zur Straße (eigene Linie) UND entlang der alten Mauerlinie (g.ende): sonst Lücke zur Nachbarmauer
+    if (g.ende) linieRastern(mauer, g.ende[0], g.ende[1], g.ende[2], g.ende[3], g.id + 1);
+    mauerRastern(mauer, g);
+  }
   for (const f of z.felder) {
     if (f.weg) continue;
     rastereObb(feld, f, f.id + 1);
@@ -134,6 +139,14 @@ function baue(z) {
     rand = neu;
   }
   return { version: z.version, strasse, belegt, mauer, feld, eimer, segmente, strDist, geh, bruecke, wege: new Map() };
+}
+
+function linieRastern(arr, ax, ay, bx, by, wert) {
+  const sch = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay)) / 200));
+  for (let k = 0; k <= sch; k++) {
+    const tx = Math.floor((ax + Math.trunc((bx - ax) * k / sch)) / 1000), ty = Math.floor((ay + Math.trunc((by - ay) * k / sch)) / 1000);
+    if (tx >= 0 && ty >= 0 && tx < KARTE_B && ty < KARTE_H) arr[ty * KARTE_B + tx] = wert;
+  }
 }
 
 /** Mauern sind dünn: entlang der Mittellinie abtasten. */

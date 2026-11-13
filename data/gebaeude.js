@@ -27,6 +27,8 @@ export const GEBAEUDE = {
   mauer: { name: 'Steinmauer', b: 1500, t: 640, kosten: { stein: 4 }, arbeit: 220, hp: 600, mauer: true, auftrag: true },
   rathaus: { name: 'Rathaus', b: 2600, t: 2000, hp: 800 },
   kirche: { name: 'Kirche St. Ilmar', b: 2600, t: 4600, hp: 1000 },
+  // Endturm: entsteht von selbst, wo eine Mauer/Palisade an Wasser, Kartenrand oder Fels endet (schließt die Lücke)
+  eckturm: { name: 'Mauerturm', b: 1300, t: 1300, arbeit: 300, hp: 450, hpStein: 1000, mauer: true, endturm: true },
   tor: { name: 'Torhaus', b: 3000, t: 1500, kosten: { holz: 4 }, arbeit: 200, hp: 450, hpStein: 1100, mauer: true, tor: true },
 };
 

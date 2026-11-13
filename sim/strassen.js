@@ -10,7 +10,7 @@ import { KARTE_B } from '../data/werte.js';
 import { GEBAEUDE } from '../data/gebaeude.js';
 import { abgeleitet } from './abgeleitet.js';
 import { findePfad } from './pfad.js';
-import { kachel, abstand, abstandStrecke, COS, SIN } from './lib.js';
+import { kachel, abstand, abstandStrecke, winkelVon, wnorm, COS, SIN } from './lib.js';
 import { begradigen, nurNeuerTeil } from './stadtplaner.js';
 
 export const BREITE = { haupt: 950, gasse: 700, weg: 560 };
@@ -42,9 +42,10 @@ export function glaetten(roh) {
   return out;
 }
 
-export function strasseHinzufuegen(z, punkte, art) {
+/** herkunft (nur zum Messen/Debuggen): handel, burgweg, gasse, anschluss, erschliessung, anbindung, herr */
+export function strasseHinzufuegen(z, punkte, art, herkunft = '') {
   if (punkte.length < 4) return null;
-  const s = { id: z.strassen.length, punkte, breite: BREITE[art], art };
+  const s = { id: z.strassen.length, punkte, breite: BREITE[art], art, herkunft };
   z.strassen.push(s);
   // Neue Straße: offene Gassenenden dürfen erneut prüfen, ob sie jetzt anschließen können.
   for (const t of z.strassen) if (t.angeschlossen) delete t.angeschlossen;
@@ -61,7 +62,7 @@ export function strasseHinzufuegen(z, punkte, art) {
 export function toreSetzen(z) {
   const kandidaten = [];
   for (const g of z.gebaeude) {
-    if (g.zustand === 'weg' || !GEBAEUDE[g.art].mauer || g.art === 'tor') continue;
+    if (g.zustand === 'weg' || !GEBAEUDE[g.art].mauer || g.art === 'tor' || GEBAEUDE[g.art].endturm) continue;
     const d = mauerKreuztStrasse(z, g);
     if (d >= 0) kandidaten.push({ g, d });
   }
@@ -71,6 +72,7 @@ export function toreSetzen(z) {
   for (const { g } of kandidaten) {
     const nahTor = z.gebaeude.some((t) => t.art === 'tor' && t.zustand !== 'weg' && abstand(t.x, t.y, g.x, g.y) < 2300);
     if (nahTor) continue;
+    torAusrichten(z, g);
     g.material = g.art;
     g.art = 'tor';
     g.b = Math.max(g.b, GEBAEUDE.tor.b); g.t = GEBAEUDE.tor.t;
@@ -79,6 +81,37 @@ export function toreSetzen(z) {
     geaendert = true;
   }
   if (geaendert) z.version++;
+}
+
+/**
+ * Torhaus rechtwinklig zur Straße stellen und mitten auf die Fahrbahn setzen (Schnittpunkt Mauer × Straße).
+ * WARUM: Ein schräg über der Straße liegendes Tor sah falsch aus — Tore stehen quer zur Straße, der Weg läuft
+ * gerade hindurch. Die alten Mauerenden (g.ende) bleiben als Rasterpunkte erhalten; abgeleitet.js rastert das
+ * Tor zusätzlich entlang dieser Linie, damit zwischen Tor und Nachbarmauer keine Lücke bleibt.
+ */
+function torAusrichten(z, g) {
+  const e = g.ende || mauerEndenLokal(g);
+  const c = abgeleitet(z);
+  let best = null, bd = Infinity;
+  for (const s of c.segmente) {
+    // Schnittpunkt der Geraden Mauer (e0→e1) und Straße (a→b), nur wenn er auf beiden Strecken liegt
+    const rx = e[2] - e[0], ry = e[3] - e[1], sx = s.bx - s.ax, sy = s.by - s.ay;
+    const nenner = rx * sy - ry * sx;
+    if (!nenner) continue;
+    const qx = s.ax - e[0], qy = s.ay - e[1];
+    const t1000 = Math.trunc((qx * sy - qy * sx) * 1000 / nenner), u1000 = Math.trunc((qx * ry - qy * rx) * 1000 / nenner);
+    if (t1000 < -300 || t1000 > 1300 || u1000 < 0 || u1000 > 1000) continue;
+    const px = e[0] + Math.trunc(rx * t1000 / 1000), py = e[1] + Math.trunc(ry * t1000 / 1000);
+    const d = abstand(px, py, g.x, g.y);
+    if (d < bd) { bd = d; best = { px, py, w: winkelVon(sx, sy) }; }
+  }
+  if (!best || bd > 2500) return;
+  if (!g.ende) g.ende = e;
+  g.x = best.px; g.y = best.py; g.w = wnorm(best.w + 90);
+}
+function mauerEndenLokal(g) {
+  const hb = Math.trunc(g.b / 2);
+  return [g.x - Math.trunc(COS[g.w] * hb / 1024), g.y - Math.trunc(SIN[g.w] * hb / 1024), g.x + Math.trunc(COS[g.w] * hb / 1024), g.y + Math.trunc(SIN[g.w] * hb / 1024)];
 }
 
 /**
@@ -115,5 +148,5 @@ export function anbinden(z, g, tuerPunkt) {
   const pfad = findePfad(z, t, -1, 'bau', { zielFn: (i) => c.strasse[i] === 1, max: 20000, erlaubt: new Set([g.id]) });
   if (!pfad || pfad.length < 2) return;
   pfad.reverse();
-  strasseHinzufuegen(z, begradigen(z, pfad, null, tuerPunkt), 'weg');
+  strasseHinzufuegen(z, begradigen(z, pfad, null, tuerPunkt), 'weg', 'anbindung');
 }

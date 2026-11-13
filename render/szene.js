@@ -21,6 +21,7 @@ import { gebaeudeSprite, baeume, figurSprites, figurSchatten, tierSprite, strass
 import { sicht } from './kamera.js';
 import { kampfwerte } from '../sim/militaer.js';
 import { mauerEnden } from '../sim/befehle.js';
+import { BREITE as STR_BREITE } from '../sim/strassen.js';
 import { erzeugeDeko, zeichneDeko } from './deko.js';
 
 const RAD = Math.PI / 180;
@@ -107,6 +108,7 @@ function strassenCache(sz, z) {
   const mx = markt ? markt.x / 1000 : -999, my = markt ? markt.y / 1000 : -999;
   const liste = [];
   for (const s of z.strassen) {
+    if (s.weg || s.punkte.length < 4) continue; // entfernte Straße
     const p = s.punkte, n = p.length / 2, breite = s.breite / 1000, hb = breite / 2;
     // 1) gleichmäßig abtasten (alle 0,4 Kacheln)
     const roh = [];
@@ -120,7 +122,7 @@ function strassenCache(sz, z) {
     const gesamt = (roh.length - 1) * 0.4, ph = (s.id * 2.399) % 6.28;
     // Pflaster: Hauptstraße im Stadtkern; Gassen ganz oder gar nicht (sonst graue Flecken an Kreuzungen)
     const mitte = roh[Math.floor(roh.length / 2)];
-    const gassePflaster = s.art === 'gasse' && Math.hypot(mitte[0] - mx, mitte[1] - my) < 7;
+    const gassePflaster = s.art !== 'haupt' && Math.hypot(mitte[0] - mx, mitte[1] - my) < 7;
     const kernAt = (q) => s.art === 'haupt' ? Math.hypot(q[0] - mx, q[1] - my) < 7 : gassePflaster;
     const pts = [], normalen = [], li = [], re = [], liR = [], reR = [], kern = [];
     for (let i = 0; i < roh.length; i++) {
@@ -198,26 +200,54 @@ function belagMuster(sz, ctx, art) {
   return sz.muster[art];
 }
 
-/** Zeichnet alle Wege in Lagen (abgelaufene Randzone, Belag, Grasnarbe, Spuren), damit Kreuzungen verschmelzen. */
+/** Umriss des Marktplatzes (abgerundetes Rechteck mit leichter Ausbuchtung an den Schmalseiten), in Kacheln. */
+function platzUmriss(platz, rand) {
+  const b = platz.b / 1000 + rand * 2, t = platz.t / 1000 + rand * 2, r = Math.min(b, t) * 0.22;
+  const p = new Path2D();
+  p.moveTo(-b / 2 + r, -t / 2); p.lineTo(b / 2 - r, -t / 2); p.quadraticCurveTo(b / 2, -t / 2, b / 2, -t / 2 + r);
+  p.lineTo(b / 2, t / 2 - r); p.quadraticCurveTo(b / 2, t / 2, b / 2 - r, t / 2); p.lineTo(-b / 2 + r, t / 2);
+  p.quadraticCurveTo(-b / 2, t / 2, -b / 2, t / 2 - r); p.lineTo(-b / 2, -t / 2 + r); p.quadraticCurveTo(-b / 2, -t / 2, -b / 2 + r, -t / 2);
+  p.closePath();
+  return p;
+}
+
+/**
+ * Zeichnet alle Wege in LAGEN über alle Straßen hinweg: erst Randzone, dann Erde (Gassen, Feldwege), dann Kies
+ * (Handelsstraße außerhalb), dann Pflaster (Stadtkern) samt Marktplatz.
+ * WARUM Lagen: Früher wurde Straße für Straße gezeichnet — wer später kam, lag oben. So überdeckte eine Erdgasse
+ * mit ihrem runden Ende die Pflasterstraße, Kies lag über Pflaster: ein wilder Flickenmix an jeder Kreuzung.
+ * Jetzt liegt immer der bessere Belag oben, Einmündungen enden sauber an seiner Kante.
+ */
 function zeichneStrassen(sz, ctx, z, zoom) {
   const str = strassenCache(sz, z);
   const FARBE = { pflaster: '#9c9384', kies: '#a48f6c', erde: '#987c58' };
-  // abgelaufenes Gras am Wegrand
+  const platz = z.gebaeude[z.herren[0].markt];
+  const imPlatz = (fn) => { ctx.save(); ctx.translate(platz.x / 1000, platz.y / 1000); ctx.rotate(platz.w * RAD); fn(); ctx.restore(); };
+  // abgelaufenes Gras am Wegrand (auch rund um den Markt)
   ctx.fillStyle = 'rgba(128,112,70,0.22)';
   for (const r of str) ctx.fill(r.randFl);
   for (const r of str) for (const e of r.enden) { ctx.beginPath(); ctx.arc(e[0], e[1], r.breite * 0.62, 0, 7); ctx.fill(); }
-  // Belag (Flächen mit ausgefransten Rändern); Enden rund, damit Einmündungen weich verschmelzen
-  for (const r of str) {
-    for (const a of r.abschnitte) { ctx.fillStyle = zoom < 14 ? FARBE[a.art] : belagMuster(sz, ctx, a.art); ctx.fill(a.pfad); }
-    const endArt = r.abschnitte.length ? [r.abschnitte[0].art, r.abschnitte[r.abschnitte.length - 1].art] : ['erde', 'erde'];
-    r.enden.forEach((e, j) => { ctx.fillStyle = zoom < 14 ? FARBE[endArt[j]] : belagMuster(sz, ctx, endArt[j]); ctx.beginPath(); ctx.arc(e[0], e[1], r.breite * 0.46, 0, 7); ctx.fill(); });
-  }
-  if (zoom >= 14) {
+  if (platz) imPlatz(() => ctx.fill(platzUmriss(platz, 0.35)));
+  for (const lage of ['erde', 'kies', 'pflaster']) {
+    const belag = zoom < 14 ? FARBE[lage] : belagMuster(sz, ctx, lage);
+    ctx.fillStyle = belag;
     for (const r of str) {
-      if (r.s.art === 'weg') { ctx.fillStyle = 'rgba(104,134,64,0.8)'; ctx.fill(r.gras); }
-      // Fahrspuren: unterbrochen und blass, sonst wirken sie wie Schienen
-      ctx.strokeStyle = r.s.art === 'weg' ? 'rgba(84,66,44,0.28)' : 'rgba(84,66,44,0.16)'; ctx.lineWidth = r.s.art === 'weg' ? 0.09 : 0.07;
-      ctx.setLineDash([0.9, 0.3, 0.5, 0.4]); ctx.stroke(r.spuren); ctx.setLineDash([]);
+      for (const a of r.abschnitte) if (a.art === lage) ctx.fill(a.pfad);
+      // Enden rund, damit Einmündungen weich verschmelzen (kleiner als die Breite: kein Klecks auf der Nachbarstraße)
+      const endArt = r.abschnitte.length ? [r.abschnitte[0].art, r.abschnitte[r.abschnitte.length - 1].art] : ['erde', 'erde'];
+      r.enden.forEach((e, j) => { if (endArt[j] === lage) { ctx.beginPath(); ctx.arc(e[0], e[1], r.breite * 0.42, 0, 7); ctx.fill(); } });
+    }
+    if (lage === 'pflaster' && platz) imPlatz(() => { ctx.fillStyle = belag; ctx.fill(platzUmriss(platz, 0)); });
+    // Grasnarbe und Fahrspuren gehören zu ihrer Lage — der bessere Belag darüber deckt sie an Kreuzungen ab
+    if (zoom >= 14 && lage !== 'pflaster') {
+      for (const r of str) {
+        const spurLage = r.s.art === 'haupt' ? 'kies' : 'erde';
+        if (spurLage !== lage) continue;
+        if (r.s.art === 'weg') { ctx.fillStyle = 'rgba(104,134,64,0.8)'; ctx.fill(r.gras); }
+        // Fahrspuren: unterbrochen und blass, sonst wirken sie wie Schienen
+        ctx.strokeStyle = r.s.art === 'weg' ? 'rgba(84,66,44,0.28)' : 'rgba(84,66,44,0.16)'; ctx.lineWidth = r.s.art === 'weg' ? 0.09 : 0.07;
+        ctx.setLineDash([0.9, 0.3, 0.5, 0.4]); ctx.stroke(r.spuren); ctx.setLineDash([]);
+      }
     }
   }
   // Brücken: Bohlen, Geländer mit Pfosten (breiter als der Weg: man geht nur hier übers Wasser)
@@ -281,6 +311,7 @@ function punktAuf(w, t) {
 function spriteArt(g) {
   if (g.art === 'haus' && g.wohn === 8) return 'stadthaus';
   if (g.art === 'tor') return g.material === 'mauer' ? 'tor_mauer' : 'tor_palisade';
+  if (g.art === 'eckturm') return g.material === 'mauer' ? 'eckturm_mauer' : 'eckturm_palisade';
   return g.art;
 }
 /** Zeichenreihenfolge: Mauern unten, darüber Torhäuser, darüber alles andere (Türme sitzen auf den Knoten). */
@@ -377,6 +408,8 @@ function ereignisseLesen(sz, z) {
     if (e.typ === 'pfeil') {
       const a = e.vonEinheit !== undefined ? { x: e.ax, y: e.ay } : z.gebaeude[e.von];
       sz.pfeile.push({ ax: a.x / 1000, ay: a.y / 1000, bx: e.x / 1000, by: e.y / 1000, t: 0 });
+    } else if (e.typ === 'stein') {
+      sz.pfeile.push({ ax: e.ax / 1000, ay: e.ay / 1000, bx: e.x / 1000, by: e.y / 1000, t: 0, stein: true });
     } else if (e.typ === 'baum') {
       const x = (e.kachel % KARTE_B) + 0.5, y = Math.floor(e.kachel / KARTE_B) + 0.5;
       sz.anims.push({ typ: 'baumfall', x, y, t: 0, leben: 1.4, nadel: sz.nadel[e.kachel], w: Math.random() * 6.28 });
@@ -533,6 +566,7 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
     zeichneGedreht(ctx, sp.schatten, g.x / 1000 + sOff * (GEBAEUDE[g.art].mauer ? 0.6 : 1.4), g.y / 1000 + sOff * (GEBAEUDE[g.art].mauer ? 0.8 : 1.8), g.b / 1000, g.t / 1000, g.w * RAD);
   }
   ctx.globalAlpha = 1;
+  zeichneZwischenstuecke(sz, z, ctx, v, winter);
   for (const g of gl) {
     const sp = gebaeudeSprite(spriteArt(g), g.variante, g.b, g.t, winter);
     const gx = g.x / 1000, gy = g.y / 1000, gb = g.b / 1000, gt = g.t / 1000;
@@ -561,6 +595,8 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
         for (let i = 0; i < 4; i += 2) {
           ctx.fillStyle = stein ? '#8e897e' : '#4a3018'; ctx.beginPath(); ctx.arc(e[i] / 1000, e[i + 1] / 1000, gt * 0.62, 0, 7); ctx.fill();
           ctx.fillStyle = stein ? '#bdb6a6' : '#9a6e42'; ctx.beginPath(); ctx.arc(e[i] / 1000, e[i + 1] / 1000, gt * 0.45, 0, 7); ctx.fill();
+          // Winter: Schneehaube auf dem Pfeiler (die Mauer-Bilder sind schon beschneit, die Knoten fehlten)
+          if (winter) { ctx.fillStyle = 'rgba(240,244,250,0.82)'; ctx.beginPath(); ctx.arc(e[i] / 1000 - gt * 0.06, e[i + 1] / 1000 - gt * 0.06, gt * 0.36, 0, 7); ctx.fill(); }
         }
       }
       if (g.hp < g.hpMax && zoom > 14 && !GEBAEUDE[g.art].begehbar) {
@@ -633,6 +669,18 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
           const rich = Math.cos(sz.zeit * 0.25 + i * 2) >= 0 ? 1 : -1;
           figur(ctx, 'bauer', x, y, f.w * RAD + Math.PI / 2 * rich, Math.floor(sz.zeit * 4), takt === 0 && f.phase === 'reif' ? 1 : -1);
         }
+      } else if (g.art === 'hof' && g.pflegeFeld >= 0) {
+        // Feldpflege: langsam die Furchen entlang, hacken (Aktion) im Wechsel mit ein paar Schritten
+        const f = z.felder[g.pflegeFeld];
+        if (!f) continue;
+        const fx = f.x / 1000, fy = f.y / 1000, cw = Math.cos(f.w * RAD), sw = Math.sin(f.w * RAD);
+        const t = sz.zeit * 0.08 + g.id, reihe = Math.floor(t) % 4, gang = t - Math.floor(t);
+        const lu = (reihe - 1.5) / 4 * f.b / 1000, rich = reihe % 2 ? -1 : 1;
+        const lv = (gang - 0.5) * rich * f.t / 1100;
+        const x = fx + lu * cw - lv * sw, y = fy + lu * sw + lv * cw;
+        const hackt = Math.floor(sz.zeit * 1.6 + g.id) % 3 !== 0;
+        figur(ctx, 'bauer', x, y, f.w * RAD + Math.PI / 2 * rich, Math.floor(sz.zeit * 3), hackt ? (Math.floor(sz.zeit * 2.2) % 2) : -1);
+        if (hackt && Math.random() < dt * 2) partikel(sz, 'staub', x, y, 0, 0, 0.6, 0.05);
       } else if (g.art === 'holzfaeller') {
         let ap = sz.arbeitsplatz.get(g.id);
         if (!ap || z.wald[ap.k] < 25 || sz.zeit > ap.bis) {
@@ -771,6 +819,7 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
   for (const p of sz.pfeile) {
     const x = p.ax + (p.bx - p.ax) * p.t, y = p.ay + (p.by - p.ay) * p.t - Math.sin(p.t * Math.PI) * 0.8;
     const dx = p.bx - p.ax, dy = p.by - p.ay, l = Math.hypot(dx, dy) || 1;
+    if (p.stein) { ctx.fillStyle = '#8a8478'; ctx.beginPath(); ctx.arc(x, y, 0.09, 0, 7); ctx.fill(); continue; }
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - dx / l * 0.35, y - dy / l * 0.35); ctx.stroke();
   }
 
@@ -833,6 +882,8 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
     }
   }
   zeichneWerkzeug(ctx, z, ui, winter, zoom);
+  if (ui.formation) zeichneFormation(ctx, ui.formation, zoom, 1);
+  else if (ui.formationNach && sz.zeit - ui.formationNach.t < 1.2) zeichneFormation(ctx, ui.formationNach, zoom, 1 - (sz.zeit - ui.formationNach.t) / 1.2);
 
   // Schneefall (Bildschirm)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -901,6 +952,49 @@ function zeichneGaerten(ctx, z, c, k, v, saison) {
   }
 }
 
+/**
+ * Zwischenstücke in Häuserzeilen (nur Optik): Stehen zwei Nachbarhäuser in der Kurve leicht gegeneinander verdreht,
+ * klafft zwischen ihnen ein Keil. Den füllt ein schmaler Bau mit eigenem Dach — wie in einer Altstadtgasse, wo die
+ * Fassaden der Straße wie eine Ziehharmonika folgen. Gilt für Paare, deren vordere (oder hintere) Ecken sich
+ * berühren und die höchstens 40° verdreht sind. Neu berechnet nur, wenn sich Gebäude ändern (z.version).
+ */
+function zwischenstuecke(sz, z) {
+  if (sz.zw && sz.zw.version === z.version) return sz.zw.liste;
+  const hs = z.gebaeude.filter((g) => g.art === 'haus' && g.zustand === 'fertig');
+  const ecke = (g, lu, lv) => { const c = Math.cos(g.w * RAD), sn = Math.sin(g.w * RAD); return [g.x / 1000 + c * lu - sn * lv, g.y / 1000 + sn * lu + c * lv]; };
+  const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  const liste = [];
+  for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) {
+    const A = hs[i], B = hs[j];
+    if (Math.hypot(A.x - B.x, A.y - B.y) / 1000 > (A.b + B.b) / 1000 + 0.6) continue;
+    let dw = Math.abs(((A.w - B.w) % 360 + 360) % 360); dw = Math.min(dw, 360 - dw);
+    if (dw > 40) continue;
+    let bester = null;
+    for (const sa of [-1, 1]) for (const sb of [-1, 1]) {
+      const fa = ecke(A, sa * A.b / 2000, -A.t / 2000), fb = ecke(B, sb * B.b / 2000, -B.t / 2000);
+      const ba = ecke(A, sa * A.b / 2000, A.t / 2000), bb = ecke(B, sb * B.b / 2000, B.t / 2000);
+      const vorn = d(fa, fb), hinten = d(ba, bb);
+      if (Math.min(vorn, hinten) > 0.35 || Math.max(vorn, hinten) > 1.6 || Math.max(vorn, hinten) < 0.1) continue;
+      const wert = Math.min(vorn, hinten);
+      if (!bester || wert < bester.wert) bester = { wert, quad: [fa, ba, bb, fb] };
+    }
+    if (bester) liste.push(bester.quad);
+  }
+  sz.zw = { version: z.version, liste };
+  return liste;
+}
+function zeichneZwischenstuecke(sz, z, ctx, v, winter) {
+  for (const q of zwischenstuecke(sz, z)) {
+    if (!sichtbar(v, q[0][0], q[0][1], 3)) continue;
+    ctx.fillStyle = winter ? '#c9c4c0' : '#8e5a44';
+    ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0], q[i][1]); ctx.closePath(); ctx.fill();
+    // First (Dachfirst) zwischen den Seitenmitten, leichte Kante
+    ctx.strokeStyle = winter ? 'rgba(120,110,104,0.6)' : 'rgba(70,40,28,0.7)'; ctx.lineWidth = 0.05;
+    ctx.beginPath(); ctx.moveTo((q[0][0] + q[1][0]) / 2, (q[0][1] + q[1][1]) / 2); ctx.lineTo((q[2][0] + q[3][0]) / 2, (q[2][1] + q[3][1]) / 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(40,24,16,0.45)'; ctx.lineWidth = 0.03; ctx.stroke(new Path2D(`M${q[0][0]} ${q[0][1]} L${q[1][0]} ${q[1][1]} L${q[2][0]} ${q[2][1]} L${q[3][0]} ${q[3][1]} Z`));
+  }
+}
+
 /** Nur Optik: Händler stehen an den Ständen, Käufer schlendern auf dem Platz (mehr Bewohner = mehr Trubel). */
 function marktTreiben(sz, z, ctx, v, dt) {
   const platz = z.gebaeude[z.herren[0].markt];
@@ -931,6 +1025,34 @@ function marktTreiben(sz, z, ctx, v, dt) {
     const [x, y] = welt(m.lu, m.lv);
     figur(ctx, m.typ, x, y, m.w, Math.floor(m.phase), -1, 0.5);
   }
+}
+
+/**
+ * Formations-Vorschau beim Rechtsklick-Ziehen: gezogene Frontlinie, ein Punkt je Soldat (braun = Speer vorn,
+ * grün = Bogen hinten), Pfeil in Blickrichtung, Breite × Tiefe als Text.
+ */
+function zeichneFormation(ctx, f, zoom, alpha) {
+  ctx.globalAlpha = Math.max(0, alpha);
+  const lw = Math.max(0.04, 1.5 / zoom);
+  ctx.strokeStyle = 'rgba(124,240,124,0.9)'; ctx.lineWidth = lw * 1.5;
+  ctx.beginPath(); ctx.moveTo(f.ax, f.ay); ctx.lineTo(f.bx, f.by); ctx.stroke();
+  const r = 0.2;
+  f.plaetze.forEach((p, i) => {
+    ctx.fillStyle = i < f.speer ? 'rgba(220,170,110,0.85)' : 'rgba(140,220,120,0.85)';
+    ctx.strokeStyle = '#1a1408'; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.arc(p.x / 1000, p.y / 1000, r, 0, 7); ctx.fill(); ctx.stroke();
+  });
+  // Blickpfeil vor der Frontmitte
+  const wx = Math.cos(f.w * RAD), wy = Math.sin(f.w * RAD), cx = f.x / 1000, cy = f.y / 1000;
+  const sx = cx + wx * 0.5, sy = cy + wy * 0.5, ex = cx + wx * 1.6, ey = cy + wy * 1.6;
+  ctx.strokeStyle = 'rgba(124,240,124,0.95)'; ctx.lineWidth = lw * 2;
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+  ctx.fillStyle = 'rgba(124,240,124,0.95)';
+  ctx.beginPath(); ctx.moveTo(ex + wx * 0.35, ey + wy * 0.35); ctx.lineTo(ex - wy * 0.25, ey + wx * 0.25); ctx.lineTo(ex + wy * 0.25, ey - wx * 0.25); ctx.fill();
+  const tiefe = Math.ceil(f.n / f.reihe);
+  ctx.fillStyle = '#f0e0b0'; ctx.font = `${13 / zoom}px sans-serif`;
+  ctx.fillText(`${f.reihe} breit × ${tiefe} tief`, f.bx + 0.5, f.by + 0.9);
+  ctx.globalAlpha = 1;
 }
 
 function zeichneWerkzeug(ctx, z, ui, winter, zoom) {
@@ -971,6 +1093,41 @@ function zeichneWerkzeug(ctx, z, ui, winter, zoom) {
     const len = Math.hypot(ex - ui.mauerStart.x / 1000, ey - ui.mauerStart.y / 1000);
     ctx.fillStyle = '#f0e0b0'; ctx.font = `${14 / zoom}px sans-serif`;
     ctx.fillText(`${Math.ceil(len * 1000 / GEBAEUDE[w.art].b)} Stück`, ex + 0.4, ey - 0.4);
+  } else if (w.typ === 'strasse') {
+    // Linienzug der neuen Straße: gesetzte Punkte + Stück bis zur Maus (grün = geht, rot = geht nicht)
+    const pk = ui.strassenPunkte, m = ui.strassenFang || ui.maus, br = STR_BREITE[w.art] / 1000;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (pk.length) {
+      ctx.strokeStyle = 'rgba(214,180,120,0.75)'; ctx.lineWidth = br;
+      ctx.beginPath(); ctx.moveTo(pk[0].x / 1000, pk[0].y / 1000);
+      for (const q of pk) ctx.lineTo(q.x / 1000, q.y / 1000);
+      ctx.stroke();
+      const l = pk[pk.length - 1];
+      ctx.strokeStyle = ui.strassenGrund ? 'rgba(230,70,60,0.75)' : 'rgba(124,230,124,0.7)';
+      ctx.setLineDash([0.35, 0.2]);
+      ctx.beginPath(); ctx.moveTo(l.x / 1000, l.y / 1000); ctx.lineTo(m.x, m.y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = '#f0e0b0'; ctx.font = `${13 / zoom}px sans-serif`;
+      const len = Math.hypot(m.x - l.x / 1000, m.y - l.y / 1000);
+      ctx.fillText(ui.strassenGrund || `${len.toFixed(1)} Kacheln · Rechtsklick = fertig`, m.x + 0.5, m.y - 0.5);
+    }
+    ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+    const r = Math.max(0.15, 6 / zoom);
+    ctx.strokeStyle = '#2a2014'; ctx.lineWidth = Math.max(0.03, 1.5 / zoom);
+    for (const q of pk) { ctx.fillStyle = 'rgba(240,210,120,0.9)'; ctx.beginPath(); ctx.arc(q.x / 1000, q.y / 1000, r, 0, 7); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle = ui.strassenFang ? 'rgba(124,240,124,0.95)' : 'rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.arc(m.x, m.y, ui.strassenFang ? r * 1.5 : r, 0, 7); ctx.fill(); ctx.stroke();
+  } else if ((w.typ === 'strasseWeg' || w.typ === 'strasseArt') && ui.strasseUnterMaus >= 0) {
+    const s = z.strassen[ui.strasseUnterMaus], p = s.punkte;
+    if (p.length >= 4) {
+      ctx.strokeStyle = w.typ === 'strasseWeg' ? 'rgba(230,60,50,0.55)' : 'rgba(110,170,255,0.55)';
+      ctx.lineWidth = s.breite / 1000 + 0.3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(p[0] / 1000, p[1] / 1000);
+      for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i] / 1000, p[i + 1] / 1000);
+      ctx.stroke(); ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+      const nach = { weg: 'Gasse', gasse: 'Hauptstraße', haupt: 'Feldweg' }[s.art], jetzt = { weg: 'Feldweg', gasse: 'Gasse', haupt: 'Hauptstraße' }[s.art];
+      ctx.fillStyle = '#f0e0b0'; ctx.font = `${13 / zoom}px sans-serif`;
+      ctx.fillText(w.typ === 'strasseWeg' ? `${jetzt} entfernen` : `${jetzt} → ${nach}`, mx + 0.5, my - 0.5);
+    }
   } else if (w.typ === 'abriss' && ui.unterMaus >= 0) {
     const g = z.gebaeude[ui.unterMaus];
     ctx.save(); ctx.translate(g.x / 1000, g.y / 1000); ctx.rotate(g.w * RAD);

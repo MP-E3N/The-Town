@@ -7,7 +7,7 @@
  */
 
 import { GEBAEUDE, ZONEN, WARENNAME, WAREN, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
-import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME, MILITAER } from '../data/werte.js';
+import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME, MILITAER, NIEDERLAGE_BEWOHNER, FELD, KAMPF } from '../data/werte.js';
 import { stadtStatus } from '../sim/baumeister.js';
 import { tageBisErnte } from '../sim/wirtschaft.js';
 import { datum } from '../sim/lib.js';
@@ -35,6 +35,13 @@ const AUFTRAG_TEXT = {
   mauer: 'Steinmauer, viel stabiler. Klicke Punkte nacheinander; Rechtsklick beendet. Rastet an Mauer-Enden und Türmen ein. Soldaten auswählen + Rechtsklick auf Mauer/Turm/Torhaus = Stellung beziehen (halber Schaden, größere Reichweite).',
   sammeln: 'Klick auf die Karte: Soldaten sammeln sich dort. Noch einmal wählen + Rechtsklick = aufheben.',
   abriss: 'Klick auf ein Gebäude reißt es ab (halbes Material zurück).',
+};
+const STRASSEN_TEXT = {
+  weg: 'Schmaler Erdweg (Feldweg). Punkte klicken; Rechtsklick, Doppelklick oder Enter legt ihn an. Rastet an Straßen ein. Über Wasser entsteht eine Brücke, über Mauern ein Tor.',
+  gasse: 'Gasse (mittel). Punkte klicken; Rechtsklick, Doppelklick oder Enter legt sie an. Am Weg baut der Baumeister Häuser, wenn dort Wohnland ist.',
+  haupt: 'Hauptstraße (breit, im Stadtkern gepflastert). Punkte klicken; Rechtsklick, Doppelklick oder Enter legt sie an.',
+  strasseArt: 'Klick auf eine Straße: Feldweg → Gasse → Hauptstraße → Feldweg.',
+  strasseWeg: 'Klick auf eine Straße entfernt sie. Häuser daran bleiben stehen.',
 };
 
 function kostenText(art) {
@@ -80,6 +87,18 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     else if (art === 'sammeln') aktionen.werkzeug({ typ: 'sammeln' });
     else if (art === 'abriss') aktionen.werkzeug({ typ: 'abriss' });
     else aktionen.werkzeug({ typ: 'bauen', art });
+  });
+  // Straßen-Knöpfe
+  const sk = $('strassenKnoepfe');
+  for (const [art, name] of [['weg', 'Feldweg'], ['gasse', 'Gasse'], ['haupt', 'Hauptstraße'], ['strasseArt', '⇅ Umwidmen'], ['strasseWeg', '✖ Entfernen']]) {
+    const b = document.createElement('button');
+    b.dataset.art = art; b.innerHTML = `${name}<small>&nbsp;</small>`; b.dataset.tipp = STRASSEN_TEXT[art];
+    sk.appendChild(b);
+  }
+  sk.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const art = b.dataset.art;
+    aktionen.werkzeug(art === 'strasseArt' || art === 'strasseWeg' ? { typ: art } : { typ: 'strasse', art });
   });
   // Reiter
   $('reiter').addEventListener('click', (e) => {
@@ -140,6 +159,36 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     return `<div class="bed" title="${text}"><div class="kopf"><span>${name}</span><span>${wert}</span></div><div class="balken"><i style="width:${wert}%;background:${farbe}"></i></div></div>`;
   }
 
+  /**
+   * Genaue Bevölkerung: wer arbeitet wo, wer ist frei, wer kann rekrutiert werden.
+   * WARUM zwei Rekruten-Zahlen: Ein Auftrag des Herrn nimmt notfalls auch einen Arbeiter (sim/wirtschaft.js
+   * anwerben), es müssen aber immer NIEDERLAGE_BEWOHNER + 3 Leute in der Stadt bleiben.
+   */
+  function bevoelkerung(zz, herr, h, st) {
+    const arbeit = { nahrung: 0, pflege: 0, holz: 0, bau: 0, stein: 0, eisen: 0, schmiede: 0 };
+    let ausbildung = 0, auftraege = 0;
+    for (const g of zz.gebaeude) {
+      if (g.besitzer !== herr || g.zustand === 'weg') continue;
+      if (g.anwerbung > 0) ausbildung++;
+      if (g.warteschlange) auftraege += g.warteschlange.length;
+      if (!g.belegt) continue;
+      if (g.zustand === 'bau') arbeit.bau += g.belegt;
+      else if (g.art === 'hof' && !(g.aufgabeFeld >= 0) && g.pflegeFeld >= 0) arbeit.pflege += g.belegt;
+      else if (g.art === 'hof' || g.art === 'viehhof' || g.art === 'fischer') arbeit.nahrung += g.belegt;
+      else if (g.art === 'holzfaeller') arbeit.holz += g.belegt;
+      else if (g.art === 'steinbruch') arbeit.stein += g.belegt;
+      else if (g.art === 'erzgrube') arbeit.eisen += g.belegt;
+      else if (g.art === 'schmiede') arbeit.schmiede += g.belegt;
+    }
+    const arbeitend = Object.values(arbeit).reduce((a, b) => a + b, 0);
+    const leute = Math.max(0, h.bewohner - NIEDERLAGE_BEWOHNER - 2);
+    const waffen = h.lager.speere + h.lager.boegen, goldFuer = Math.floor(h.lager.gold / MILITAER.anwerben.gold);
+    const platz = Math.max(0, st.plaetze - st.soldaten - ausbildung);
+    const jetzt = Math.min(leute, waffen, goldFuer, platz);
+    const grenze = jetzt === leute ? 'Bewohner' : jetzt === waffen ? 'Waffen' : jetzt === goldFuer ? 'Gold' : 'Plätze in Burg/Kaserne';
+    return { arbeit, arbeitend, frei: h.arbeitslos, leute, ohneAusfall: Math.min(leute, h.arbeitslos), waffen, goldFuer, platz, jetzt, grenze, ausbildung, auftraege };
+  }
+
   let zuletzt = '', chronikZuletzt = '';
   function aktualisiere(sofort = false) {
     meldungen();
@@ -148,10 +197,11 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     const d = datum(zz.tick);
     $('datum').textContent = `Tag ${d.tag + 1} · ${JAHRESZEITEN[d.jahreszeit]} · Jahr ${d.jahr}`;
     const verbrauch = st.verbrauch;
+    const bv = bevoelkerung(zz, herr, h, st);
     const waren = Object.keys(SYMBOL).map((w) => {
       const knapp = (w === 'nahrung' && h.lager.nahrung < verbrauch * 4) || (w === 'holz' && h.lager.holz < 10);
       return `<span class="${knapp ? 'knapp' : ''}" data-tipp="${WARENNAME[w]} – ${WAREN_TEXT[w]}">${SYMBOL[w]} ${h.lager[w]}</span>`;
-    }).join('') + `<span data-tipp="Bewohner – davon ${h.arbeitslos} ohne Arbeit (Rekruten kommen von hier)">👥 ${h.bewohner} <small class="klein">(${h.arbeitslos} frei)</small></span>`
+    }).join('') + `<span data-tipp="Bewohner ${h.bewohner}: ${bv.arbeitend} arbeiten, ${bv.frei} ohne Arbeit · rekrutierbar jetzt ${bv.jetzt} (Details rechts unter Bevölkerung)">👥 ${h.bewohner} <small class="klein">(⚒${bv.arbeitend} · ${bv.frei} frei · 🛡${bv.jetzt})</small></span>`
       + `<span data-tipp="Garnison – Ziel: ${ZIEL.garnison} Mann. Sold: ${Math.ceil(st.soldaten / MILITAER.soldTeiler)} Gold/Tag">🛡️ ${st.soldaten}/${ZIEL.garnison}</span><span data-tipp="Zufriedenheit – ab 50 ziehen Leute zu, unter 35 ziehen sie weg">${h.laune >= 60 ? '🙂' : h.laune >= 35 ? '😐' : '☹️'} ${h.laune}</span>`;
     $('waren').innerHTML = waren;
     for (const b of $('tempo').querySelectorAll('button')) {
@@ -163,11 +213,19 @@ export function erzeugePanels(verbindung, ui, aktionen) {
       const w = ui.werkzeug, a = b.dataset.art;
       b.classList.toggle('an', !!w && (w.art === a || w.typ === a));
     }
+    for (const b of $('strassenKnoepfe').querySelectorAll('button')) {
+      const w = ui.werkzeug, a = b.dataset.art;
+      b.classList.toggle('an', !!w && (w.typ === 'strasse' ? w.art === a : w.typ === a));
+    }
     // Werkzeug-Hinweis
     const w = ui.werkzeug;
     let hinweis = 'Werkzeug wählen. Ohne Werkzeug: Klick auf ein Gebäude zeigt Details.';
     if (w && w.typ === 'zone') hinweis = `<b>${ZONEN[w.zone].name}:</b> ${ZONEN_TEXT[w.zone]} Linke Maustaste gedrückt halten und malen.`;
     else if (w && w.typ === 'bauen') hinweis = `<b>${GEBAEUDE[w.art].name}</b> (${kostenText(w.art)}): ${AUFTRAG_TEXT[w.art]} Q/E dreht.` + (ui.geist && ui.geist.grund ? `<br><span style="color:var(--schlecht)">Geht nicht: ${ui.geist.grund}</span>` : '');
+    else if (w && w.typ === 'strasse') hinweis = `<b>${{ weg: 'Feldweg', gasse: 'Gasse', haupt: 'Hauptstraße' }[w.art]}:</b> ${STRASSEN_TEXT[w.art]} Esc verwirft.`
+      + (ui.strassenPunkte.length ? `<br>${ui.strassenPunkte.length} Punkt${ui.strassenPunkte.length > 1 ? 'e' : ''} gesetzt.` : '')
+      + (ui.strassenGrund ? `<br><span style="color:var(--schlecht)">Geht nicht: ${ui.strassenGrund}</span>` : '');
+    else if (w && STRASSEN_TEXT[w.typ]) hinweis = STRASSEN_TEXT[w.typ];
     else if (w) hinweis = AUFTRAG_TEXT[w.art || w.typ];
     $('werkzeugHinweis').innerHTML = hinweis;
 
@@ -181,6 +239,19 @@ export function erzeugePanels(verbindung, ui, aktionen) {
         <div class="zeile"><span>Garnison</span><span class="${zielGarn ? 'ok' : ''}">${st.soldaten} / ${ZIEL.garnison} Mann ${zielGarn ? '✔' : ''}</span></div>
         <div class="zeile"><span>Satte Tage am Stück</span><span class="${zielSatt ? 'ok' : ''}">${Math.min(h.satteTage, ZIEL.satteTage)} / ${ZIEL.satteTage} ${zielSatt ? '✔' : ''}</span></div>
         <div class="klein">Plätze für Soldaten: ${st.plaetze} (Burg 5, je Kaserne 10)</div>
+      </div>
+      <h3>Bevölkerung · ${h.bewohner} Bewohner + ${st.soldaten} Soldaten</h3>
+      <div class="bev">
+        <div class="zeile"><span class="w">Arbeiten</span><span><b>${bv.arbeitend}</b></span></div>
+        <div class="zeile klein"><span>&nbsp;· Nahrung (Höfe, Vieh, Fischer)</span><span>${bv.arbeit.nahrung}</span></div>
+        <div class="zeile klein" data-tipp="Zwischen Saat und Ernte hacken und jäten die Bauern — bis +${FELD.pflegeBonus} % Ertrag"><span>&nbsp;· Feldpflege</span><span>${bv.arbeit.pflege}</span></div>
+        <div class="zeile klein"><span>&nbsp;· Holz</span><span>${bv.arbeit.holz}</span></div>
+        <div class="zeile klein"><span>&nbsp;· Baustellen</span><span>${bv.arbeit.bau}</span></div>
+        <div class="zeile klein"><span>&nbsp;· Stein · Erz · Schmiede</span><span>${bv.arbeit.stein} · ${bv.arbeit.eisen} · ${bv.arbeit.schmiede}</span></div>
+        <div class="zeile"><span class="w">Ohne Arbeit</span><span style="color:${bv.frei ? 'var(--warn)' : 'inherit'}"><b>${bv.frei}</b></span></div>
+        <div class="zeile" data-tipp="So viele dürfen zum Heer, ohne dass die Stadt unter ${NIEDERLAGE_BEWOHNER + 3} Bewohner fällt. Wer Arbeit hat, fehlt danach dort."><span class="w">Für Rekruten verfügbar</span><span><b>${bv.leute}</b> <small class="klein">(${bv.ohneAusfall} ohne Arbeitsausfall)</small></span></div>
+        <div class="zeile" data-tipp="Begrenzt durch Leute, Waffen (${bv.waffen}), Gold (reicht für ${bv.goldFuer}) und freie Plätze (${bv.platz})"><span class="w">Jetzt rekrutierbar</span><span><b>${bv.jetzt}</b> <small class="klein">(Grenze: ${bv.grenze})</small></span></div>
+        ${bv.ausbildung || bv.auftraege ? `<div class="zeile klein"><span>&nbsp;· in Ausbildung · in Auftrag</span><span>${bv.ausbildung} · ${bv.auftraege}</span></div>` : ''}
       </div>
       <h3>Bedürfnisse · Zufriedenheit ${h.laune}</h3>
       ${balken('🍞 Nahrung', bed.nahrung, 'Anteil satter Mäuler gestern')}
@@ -243,7 +314,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
       const verletzt = sel.filter((u) => u.hp < u.hpMax).length;
       const frei = sel.filter((u) => !u.befehl).length;
       html = `<h3>${sel.length} Soldaten ausgewählt</h3>
-        <div class="klein">${speer} Speerträger · ${bogen} Bogenschützen · ${verletzt} verletzt · ${frei} auf eigene Faust</div>
+        <div class="klein">${speer} Speerträger · ${bogen} Bogenschützen · ${verletzt} verletzt (heilen in Burg/Kaserne) · ${frei} auf eigene Faust</div>
         <div class="klein">Rechtsklick auf Boden = marschieren und halten · auf Räuber = angreifen · G = alle · F = auf eigene Faust</div>
         <div class="knoepfe"><button data-frei="1" title="Soldaten verteidigen wieder selbstständig und kehren zum Posten zurück">Auf eigene Faust (F)</button><button data-zu="1">Abwählen</button></div>`;
     } else if (ui.auswahl >= 0) {
@@ -265,6 +336,8 @@ export function erzeugePanels(verbindung, ui, aktionen) {
           }
           if (typ.plaetze) {
             const n = zz.einheiten.filter((u) => u.art === 'soldat' && u.heim === g.id).length;
+            const heil = zz.einheiten.filter((u) => u.art === 'soldat' && u.besitzer === herr && u.hp < u.hpMax && Math.hypot(u.x - g.x, u.y - g.y) <= Math.max(g.b, g.t) / 2 + KAMPF.heilRadius).length;
+            if (heil) zeilen.push(`Verwundete in Pflege: ${heil} (heilen hier schnell)`);
             zeilen.push(`Soldaten: ${n} / ${typ.plaetze}${g.anwerbung ? ' · Rekrut in Ausbildung (' + Math.floor(g.anwerbung / 3) + ' %)' : ''}`);
             const ws = g.warteschlange || [];
             const zaehl = (a) => ws.filter((x) => x === a).length;
@@ -274,7 +347,9 @@ export function erzeugePanels(verbindung, ui, aktionen) {
           }
           if (g.art === 'hof') {
             const ph = { brach: 'brach', wachsend: 'wächst', reif: 'reif' };
-            zeilen.push('Felder: ' + g.felder.map((id) => { const f = zz.felder[id]; return f.weg ? '—' : ph[f.phase] + (f.phase === 'wachsend' ? ` ${Math.floor(f.stand / 50)}%` : ''); }).join(', '));
+            zeilen.push('Felder: ' + g.felder.map((id) => { const f = zz.felder[id]; return f.weg ? '—' : ph[f.phase] + (f.phase === 'wachsend' ? ` ${Math.floor(f.stand / 50)}% · gepflegt ${f.pflege || 0}%` : ''); }).join(', '));
+            const tun = g.aufgabeFeld >= 0 ? (zz.felder[g.aufgabeFeld].phase === 'reif' ? 'ernten' : 'säen') : g.pflegeFeld >= 0 && g.belegt ? 'hacken und jäten (Feldpflege, bis +' + FELD.pflegeBonus + ' % Ertrag)' : 'nichts zu tun – helfen anderswo';
+            zeilen.push('Bauern: ' + tun);
           }
           if (typ.lager) {
             extra += inhaltTabelle(g);

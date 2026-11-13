@@ -108,3 +108,8 @@ h3 { font: 13px Georgia, serif; color: var(--gold); margin: 10px 0 4px; }
 #info .inhalt { display: grid; grid-template-columns: repeat(4, auto); gap: 3px 12px; }
 
 #links [data-tipp]:hover::after { white-space: normal; width: 220px; }
+
+#cheatKnopf { margin-left: 6px; }
+#cheatKnopf[data-tipp]:hover::after { left: auto; right: 0; }
+.bev .zeile span:last-child { font-variant-numeric: tabular-nums; }
+#rechts [data-tipp]:hover::after { left: auto; right: 0; white-space: normal; width: 240px; }

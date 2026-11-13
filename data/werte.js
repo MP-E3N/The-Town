@@ -66,7 +66,27 @@ export const FELD = {
   saeArbeit: 200,
   ernteArbeit: 300,
   ertrag: 60,
+  /**
+   * Feldpflege zwischen Saat und Ernte (hacken, jäten, Steine lesen, Vögel verscheuchen): 1 Bauer je Hof.
+   * Pflege 0..100 je Feld; so viele Arbeiter-Ticks je Pflegepunkt; volle Pflege = so viel % mehr Ertrag.
+   */
+  pflegeTicks: 25,
+  pflegeBonus: 25,
+  /**
+   * Felder wachsen nach dem Anlegen, bis Straße, Nachbar, Zonenrand oder Grenze erreicht ist (Flickenteppich).
+   * Flächen in Milli-Kacheln² (1 Kachel² = 1 000 000). Ertrag und Arbeit wachsen mit der Fläche:
+   * ein Feld der Größe `basis` (2,7 × 3,9 Kacheln) bringt genau `ertrag`.
+   */
+  basis: 10530000,
+  maxFeld: 36000000,
+  maxHof: 100000000,
 };
+
+/** Weiden wachsen wie Felder; der Viehhof erzeugt mit der Weidefläche mehr (höchstens doppelt so viel). */
+export const WEIDE = { basis: 22080000, maxFeld: 50000000 };
+
+/** Wegebau des Baumeisters: je Zone höchstens ein neuer Weg in dieser Zeit; Feldweg-Achsen höchstens so lang. */
+export const WEGE = { abstandTicks: 600, achseMax: 34000, zufahrtMax: 20000 };
 
 export const WALD = {
   /** Wald pro Kachel 0..100; ein Baum = 25. Pro Holz-Einheit wird so viel gefällt. */
@@ -93,7 +113,15 @@ export const KAMPF = {
   mauerSchaden: 8,
   /** Wer auf Mauer oder Turm steht, reicht weiter (Milli-Kacheln). */
   mauerReichweiteBogen: 1500,
-  mauerReichweiteSpeer: 500,
+  /** Nahkämpfer auf Mauer oder Turm werfen Steine hinunter (viel kürzer als Bögen). */
+  steinwurf: { reichweite: 2500, schaden: [6, 10], takt: 14 },
+  /**
+   * Heilung: In und an Burg oder Kaserne (Feldscher, Lager) 1 Leben je heilTakt Ticks; draußen nur je 20–30 Ticks.
+   * Wer unter heilenAb % Leben hat und nicht kämpft, geht von selbst dorthin (nur Soldaten auf eigene Faust).
+   */
+  heilTakt: 3,
+  heilenAb: 70,
+  heilRadius: 3500,
   pluenderTakt: 20,
   pluenderSchaden: 4,
   beuteMax: 12,
