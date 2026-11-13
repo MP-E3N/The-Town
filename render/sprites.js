@@ -252,28 +252,50 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
       for (let i = 1; i < 5; i++) { ctx.beginPath(); ctx.moveTo(w * 0.2, h * (0.2 + i * 0.12)); ctx.lineTo(w * 0.8, h * (0.2 + i * 0.12)); ctx.stroke(); }
       zinnen(ctx, 2, 2, w - 4, h - 4, w * 0.11, [196, 190, 176]);
       ctx.fillStyle = '#3a2a1a'; ctx.fillRect(w * 0.62, h * 0.62, w * 0.12, h * 0.12);
+      // Eingang vorn (oben im Bild): Holztür mit Treppenstufe — sitzt der Turm in einer Mauer, liegt sie innen
+      ctx.fillStyle = '#4e3a26'; ctx.fillRect(w * 0.38, 0, w * 0.24, h * 0.13);
+      ctx.fillStyle = '#7a5530'; ctx.fillRect(w * 0.41, 0, w * 0.18, h * 0.1);
+      ctx.strokeStyle = '#3a2614'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(w * 0.5, 0); ctx.lineTo(w * 0.5, h * 0.1); ctx.stroke();
       fahne(ctx, w * 0.5, h * 0.5, w * 0.3);
       break;
     }
     case 'palisade': {
-      const rr = h * 0.48, n = Math.max(2, Math.round(w / (rr * 1.7)));
-      ctx.fillStyle = 'rgba(40,26,14,0.9)'; ctx.fillRect(0, h * 0.3, w, h * 0.4);
+      // Außen (oben im Bild): eine Reihe schlanker, angespitzter Stämme. Innen (unten): Wehrgang aus Bohlen auf
+      // Stützen, auf dem Soldaten stehen. WARUM so schmal: Die alten dicken Pfähle wirkten wie eine Steinmauer.
+      const sh = h * 0.52, rr = sh * 0.5, n = Math.max(3, Math.round(w / (rr * 1.85)));
+      ctx.fillStyle = '#7a5532'; ctx.fillRect(0, sh * 0.85, w, h - sh * 0.85);
+      ctx.strokeStyle = 'rgba(46,28,12,0.65)'; ctx.lineWidth = 1;
+      for (let px = 2; px < w; px += 4.5) { ctx.beginPath(); ctx.moveTo(px, sh * 0.85); ctx.lineTo(px, h); ctx.stroke(); }
+      ctx.fillStyle = 'rgba(30,18,8,0.55)'; ctx.fillRect(0, h - 1.5, w, 1.5);
       for (let i = 0; i < n; i++) {
         const px = (i + 0.5) * w / n;
-        ctx.fillStyle = '#3a2614'; ctx.beginPath(); ctx.arc(px, h / 2, rr, 0, 7); ctx.fill();
-        const g = ctx.createRadialGradient(px - rr * 0.3, h / 2 - rr * 0.3, 1, px, h / 2, rr);
-        g.addColorStop(0, css(hell([176, 132, 84], 1 + r() * 0.15))); g.addColorStop(1, '#6a4626');
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, h / 2, rr - 1.5, 0, 7); ctx.fill();
-        ctx.strokeStyle = 'rgba(70,44,22,0.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(px, h / 2, rr * 0.45, 0, 7); ctx.stroke();
-        ctx.fillStyle = '#4a3018'; ctx.beginPath(); ctx.arc(px, h / 2, rr * 0.18, 0, 7); ctx.fill();
+        ctx.fillStyle = '#2e1e0e'; ctx.beginPath(); ctx.arc(px, sh / 2, rr, 0, 7); ctx.fill();
+        const g = ctx.createRadialGradient(px - rr * 0.3, sh / 2 - rr * 0.3, 0.5, px, sh / 2, rr);
+        g.addColorStop(0, css(hell([186, 142, 92], 1 + r() * 0.15))); g.addColorStop(1, '#5e3e20');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, sh / 2, rr - 1, 0, 7); ctx.fill();
+        // angespitzt: heller Schnitt an der Spitze
+        ctx.fillStyle = '#e2c494'; ctx.beginPath(); ctx.arc(px - rr * 0.12, sh / 2 - rr * 0.12, rr * 0.28, 0, 7); ctx.fill();
       }
       break;
     }
     case 'mauer': {
-      steinmauer(ctx, 0, 0, w, h, [156, 150, 140]);
-      ctx.fillStyle = 'rgba(90,80,70,0.5)'; ctx.fillRect(0, h * 0.35, w, h * 0.3);
-      ctx.fillStyle = '#c2bcae';
-      for (let px = 0; px < w; px += h * 0.7) ctx.fillRect(px, 0, h * 0.4, h * 0.3);
+      // Außen (oben im Bild): Brustwehr mit Zinnen. Innen (unten): Wehrgang aus hellen Steinplatten, dann die
+      // niedrige Innenkante. So sieht man auf einen Blick, wo außen ist.
+      const bw = h * 0.36;
+      steinmauer(ctx, 0, 0, w, h, [148, 142, 132]);
+      ctx.fillStyle = '#bab3a3'; ctx.fillRect(0, bw, w, h * 0.52);
+      ctx.strokeStyle = 'rgba(110,100,88,0.55)'; ctx.lineWidth = 1;
+      for (let px = 3; px < w; px += h * 0.45) { ctx.beginPath(); ctx.moveTo(px, bw); ctx.lineTo(px, bw + h * 0.52); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(0, bw + h * 0.26); ctx.lineTo(w, bw + h * 0.26); ctx.stroke();
+      ctx.fillStyle = '#8f887b'; ctx.fillRect(0, h * 0.88, w, h * 0.12);
+      ctx.fillStyle = '#6f685d'; ctx.fillRect(0, 0, w, bw);
+      const zw = h * 0.42;
+      for (let px = 1; px < w; px += zw * 1.7) {
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(px + 1.5, 1.5, Math.min(zw, w - px), bw);
+        ctx.fillStyle = '#d2cbbb'; ctx.fillRect(px, 0, Math.min(zw, w - px), bw - 1);
+        ctx.fillStyle = '#e6e0d2'; ctx.fillRect(px, 0, Math.min(zw, w - px), 2);
+      }
+      ctx.fillStyle = 'rgba(30,24,18,0.6)'; ctx.fillRect(0, 0, w, 1.5);
       break;
     }
     case 'tor':
@@ -405,25 +427,91 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
     case 'kirche': {
       // geostet: Turm/Portal im Westen (oben im Bild), Schiff mit Schieferdach, runde Apsis im Osten (unten).
       // Kirchhof mit niedriger Mauer und Grabsteinen; er wirft keinen Schatten (siehe koerper unten).
-      ctx.fillStyle = '#7f9a5a'; ctx.fillRect(2, 2, w - 4, h - 4);
-      ctx.strokeStyle = '#8e897c'; ctx.lineWidth = 2.5; ctx.strokeRect(2, 2, w - 4, h - 4);
-      ctx.fillStyle = '#7a6a52'; ctx.fillRect(w / 2 - 5, 0, 10, h * 0.1); // Weg zum Portal
-      for (let i = 0; i < 14; i++) { ctx.fillStyle = '#a6a194'; ctx.fillRect(w * (i % 2 ? 0.06 : 0.84), h * (0.24 + Math.floor(i / 2) * 0.09), w * 0.07, h * 0.022); }
-      for (const [bx, by] of [[0.1, 0.12], [0.88, 0.9]]) { ctx.fillStyle = '#4e7a3a'; ctx.beginPath(); ctx.arc(w * bx, h * by, w * 0.09, 0, 7); ctx.fill(); }
-      const kw0 = w * 0.2, kw = w * 0.6;
-      const ts = kw * 0.8, tx = w / 2, ty = ts / 2 + h * 0.03;
-      koerper = (c2) => { c2.fillRect(kw0, h * 0.2, kw, h * 0.6); c2.beginPath(); c2.arc(w / 2, h * 0.8, kw * 0.42, 0, Math.PI); c2.fill(); c2.fillRect(tx - ts / 2, ty - ts / 2, ts, ts); };
-      satteldach(ctx, kw0, h * 0.2, kw, h * 0.6, 'schiefer', r, { first: true });
-      ctx.fillStyle = '#4e5664'; ctx.beginPath(); ctx.arc(w / 2, h * 0.8, kw * 0.42, 0, Math.PI); ctx.fill();
-      ctx.strokeStyle = '#30363f'; ctx.lineWidth = 1;
-      for (let a = 0.2; a < 3.0; a += 0.45) { ctx.beginPath(); ctx.moveTo(w / 2, h * 0.8); ctx.lineTo(w / 2 + Math.cos(a) * kw * 0.42, h * 0.8 + Math.sin(a) * kw * 0.42); ctx.stroke(); }
-      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(tx - ts / 2 + 4, ty - ts / 2 + 4, ts, ts);
-      ctx.fillStyle = '#8a8476'; ctx.fillRect(tx - ts / 2 - 1, ty - ts / 2 - 1, ts + 2, ts + 2);
-      ctx.fillStyle = '#5c6472'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - ts / 2, ty - ts / 2); ctx.lineTo(tx + ts / 2, ty - ts / 2); ctx.fill();
-      ctx.fillStyle = '#6c7482'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - ts / 2, ty - ts / 2); ctx.lineTo(tx - ts / 2, ty + ts / 2); ctx.fill();
-      ctx.fillStyle = '#464e5a'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx + ts / 2, ty - ts / 2); ctx.lineTo(tx + ts / 2, ty + ts / 2); ctx.fill();
-      ctx.fillStyle = '#3a414c'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - ts / 2, ty + ts / 2); ctx.lineTo(tx + ts / 2, ty + ts / 2); ctx.fill();
-      ctx.fillStyle = '#e0c060'; ctx.fillRect(tx - 1, ty - 4, 2, 8); ctx.fillRect(tx - 3, ty - 1, 6, 2);
+      // Runde 9: größer und reicher — Westturm mit grünem Kupferhelm, Strebepfeiler, Querhaus mit Vierungsreiter,
+      // Chor mit Apsis und Sakristei, ummauerter Kirchhof mit Tor, Kiesweg, Gräberreihen und Linden.
+      ctx.fillStyle = '#7c9858'; ctx.fillRect(3, 3, w - 6, h - 6);
+      const kr = rnd(77);
+      for (let i = 0; i < 260; i++) { ctx.fillStyle = `rgba(${90 + kr() * 40},${130 + kr() * 40},${60 + kr() * 30},0.5)`; ctx.fillRect(kr() * w, kr() * h, 2, 2); }
+      // Kirchhofmauer mit Deckplatten, Eckpfeilern und Tor vorn
+      ctx.strokeStyle = '#8a8476'; ctx.lineWidth = 5; ctx.strokeRect(3, 3, w - 6, h - 6);
+      ctx.strokeStyle = '#b8b2a2'; ctx.lineWidth = 2; ctx.strokeRect(3, 3, w - 6, h - 6);
+      for (const [px, py] of [[3, 3], [w - 3, 3], [3, h - 3], [w - 3, h - 3]]) { ctx.fillStyle = '#9a9486'; ctx.fillRect(px - 5, py - 5, 10, 10); ctx.fillStyle = '#c8c2b2'; ctx.fillRect(px - 3, py - 3, 6, 6); }
+      ctx.fillStyle = '#7c9858'; ctx.fillRect(w / 2 - 13, 0, 26, 8);
+      ctx.fillStyle = '#5a4630'; ctx.fillRect(w / 2 - 13, 1, 4, 6); ctx.fillRect(w / 2 + 9, 1, 4, 6);
+      // Kiesweg zum Portal, mit Randsteinen
+      ctx.fillStyle = '#b7a68a'; ctx.fillRect(w / 2 - 9, 0, 18, h * 0.12);
+      ctx.fillStyle = 'rgba(120,104,80,0.6)'; ctx.fillRect(w / 2 - 10, 0, 2, h * 0.12); ctx.fillRect(w / 2 + 8, 0, 2, h * 0.12);
+      // Gräber: Reihen beiderseits, Kreuze und Steine
+      for (let i = 0; i < 22; i++) {
+        const links = i % 2 === 0, gx = w * (links ? 0.05 + (i % 4 === 0 ? 0 : 0.07) : 0.83 + (i % 4 === 1 ? 0 : 0.07)), gy = h * (0.3 + Math.floor(i / 2) * 0.055);
+        if (gy > h * 0.93) continue;
+        ctx.fillStyle = 'rgba(70,90,50,0.6)'; ctx.fillRect(gx - 1, gy + 3, w * 0.05, h * 0.02);
+        ctx.fillStyle = i % 3 ? '#b0aa9c' : '#8e887a'; ctx.fillRect(gx, gy, w * 0.035, 4);
+        if (i % 3 === 0) { ctx.fillStyle = '#6a5a44'; ctx.fillRect(gx + w * 0.012, gy - 3, 2, 8); }
+      }
+      // Linden
+      for (const [bx, by, br] of [[0.12, 0.1, 0.1], [0.88, 0.1, 0.09], [0.1, 0.92, 0.08], [0.9, 0.9, 0.1]]) {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(w * bx + 3, h * by + 3, w * br, 0, 7); ctx.fill();
+        ctx.fillStyle = '#3f6a30'; ctx.beginPath(); ctx.arc(w * bx, h * by, w * br, 0, 7); ctx.fill();
+        ctx.fillStyle = '#5a8a42'; ctx.beginPath(); ctx.arc(w * bx - w * br * 0.25, h * by - w * br * 0.25, w * br * 0.6, 0, 7); ctx.fill();
+      }
+      // Maße des Baus
+      const ts = w * 0.3, tx = w / 2, ty = h * 0.08 + ts / 2;          // Westturm
+      const sx0 = w * 0.27, sw = w * 0.46, sy0 = ty + ts / 2 - 2, sy1 = h * 0.6; // Langhaus
+      const qx0 = w * 0.12, qw = w * 0.76, qy0 = h * 0.56, qh = h * 0.1;    // Querhaus
+      const cx0 = w * 0.32, cw = w * 0.36, cy1 = h * 0.78, ar = cw / 2;     // Chor + Apsis
+      koerper = (c2) => {
+        c2.fillRect(sx0, sy0, sw, sy1 - sy0); c2.fillRect(qx0, qy0, qw, qh); c2.fillRect(cx0, qy0, cw, cy1 - qy0);
+        c2.beginPath(); c2.arc(w / 2, cy1, ar, 0, Math.PI); c2.fill(); c2.fillRect(tx - ts / 2, ty - ts / 2, ts, ts);
+      };
+      // Mauerwerk (schmaler Rand neben den Dächern) mit Strebepfeilern und Fenstern
+      ctx.fillStyle = '#c9c1ad'; ctx.fillRect(sx0 - 3, sy0, sw + 6, sy1 - sy0); ctx.fillRect(qx0 - 3, qy0 - 3, qw + 6, qh + 6); ctx.fillRect(cx0 - 3, qy0, cw + 6, cy1 - qy0);
+      ctx.beginPath(); ctx.arc(w / 2, cy1, ar + 3, 0, Math.PI); ctx.fill();
+      for (let y = sy0 + 8; y < sy1 - 6; y += (sy1 - sy0) / 6) {
+        for (const sd of [-1, 1]) {
+          const bx = sd < 0 ? sx0 - 8 : sx0 + sw + 2;
+          ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(bx + 2, y + 2, 6, 7);
+          ctx.fillStyle = '#b4ac98'; ctx.fillRect(bx, y, 6, 7);
+          ctx.fillStyle = '#4a6a9a'; ctx.fillRect(sd < 0 ? sx0 - 2 : sx0 + sw, y + (sy1 - sy0) / 12, 2, 6); // Kirchenfenster
+        }
+      }
+      // Sakristei am Chor
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(cx0 + cw + 3, qy0 + qh + 6, w * 0.12, h * 0.07);
+      satteldach(ctx, cx0 + cw, qy0 + qh + 3, w * 0.12, h * 0.07, 'schiefer', r, { first: false });
+      // Dächer: Langhaus, Querhaus, Chor, Apsis (Schiefer)
+      satteldach(ctx, sx0, sy0, sw, sy1 - sy0, 'schiefer', r, { first: true });
+      satteldach(ctx, cx0, qy0, cw, cy1 - qy0, 'schiefer', r, { first: true });
+      satteldach(ctx, qx0, qy0, qw, qh, 'schiefer', r, { first: false });
+      const ag = ctx.createRadialGradient(w / 2, cy1, 1, w / 2, cy1, ar);
+      ag.addColorStop(0, '#6a7486'); ag.addColorStop(1, '#3e4654');
+      ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(w / 2, cy1, ar, 0, Math.PI); ctx.fill();
+      ctx.strokeStyle = '#2c323c'; ctx.lineWidth = 1;
+      for (let a = 0.25; a < 3.0; a += 0.42) { ctx.beginPath(); ctx.moveTo(w / 2, cy1); ctx.lineTo(w / 2 + Math.cos(a) * ar, cy1 + Math.sin(a) * ar); ctx.stroke(); }
+      // Vierungsreiter (kleiner Dachturm über der Kreuzung) mit goldener Spitze
+      const vx = w / 2, vy = qy0 + qh / 2, vr = w * 0.06;
+      ctx.fillStyle = '#5f8f7a'; ctx.beginPath();
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + Math.PI / 8; ctx.lineTo(vx + Math.cos(a) * vr, vy + Math.sin(a) * vr); }
+      ctx.fill(); ctx.strokeStyle = '#3c6454'; ctx.stroke();
+      ctx.fillStyle = '#e8c860'; ctx.beginPath(); ctx.arc(vx, vy, 2.2, 0, 7); ctx.fill();
+      // Westturm: Mauerwerk, Ecktürmchen, grüner Kupferhelm (vier Flächen), goldenes Kreuz
+      ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.fillRect(tx - ts / 2 + 6, ty - ts / 2 + 6, ts, ts);
+      ctx.fillStyle = '#9a9282'; ctx.fillRect(tx - ts / 2 - 2, ty - ts / 2 - 2, ts + 4, ts + 4);
+      const hs = ts * 0.86;
+      ctx.fillStyle = '#6fa08a'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - hs / 2, ty - hs / 2); ctx.lineTo(tx + hs / 2, ty - hs / 2); ctx.fill();
+      ctx.fillStyle = '#82b39c'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - hs / 2, ty - hs / 2); ctx.lineTo(tx - hs / 2, ty + hs / 2); ctx.fill();
+      ctx.fillStyle = '#527e6c'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx + hs / 2, ty - hs / 2); ctx.lineTo(tx + hs / 2, ty + hs / 2); ctx.fill();
+      ctx.fillStyle = '#466e5e'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - hs / 2, ty + hs / 2); ctx.lineTo(tx + hs / 2, ty + hs / 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(40,70,60,0.8)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(tx - hs / 2, ty - hs / 2); ctx.lineTo(tx + hs / 2, ty + hs / 2); ctx.moveTo(tx + hs / 2, ty - hs / 2); ctx.lineTo(tx - hs / 2, ty + hs / 2); ctx.stroke();
+      for (const [ex, ey] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const px = tx + ex * ts / 2, py = ty + ey * ts / 2;
+        ctx.fillStyle = '#8a8274'; ctx.beginPath(); ctx.arc(px, py, ts * 0.1, 0, 7); ctx.fill();
+        ctx.fillStyle = '#5f8f7a'; ctx.beginPath(); ctx.arc(px, py, ts * 0.065, 0, 7); ctx.fill();
+      }
+      ctx.fillStyle = '#f0d070'; ctx.fillRect(tx - 1.5, ty - 6, 3, 12); ctx.fillRect(tx - 4.5, ty - 2.5, 9, 3);
+      // Portal (Westseite, zum Weg): Rundbogen mit Stufen
+      ctx.fillStyle = '#a89e88'; ctx.fillRect(tx - 9, ty - ts / 2 - 7, 18, 7);
+      ctx.fillStyle = '#5a3c22'; ctx.fillRect(tx - 6, ty - ts / 2 - 4, 12, 5);
       break;
     }
     case 'stadthaus': {

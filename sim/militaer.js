@@ -169,13 +169,19 @@ function mauerWache(z, u) {
   else if (u.hp < u.hpMax && z.tick % 25 === 0) u.hp++;
 }
 
-/** Von der Mauer herunter auf die Seite zur Burg hin (die Innenseite). */
+/** Seite (+1/−1 entlang lokal v), auf der Soldaten auf- und absteigen: bei Mauern der Wehrgang innen, sonst zur Burg. */
+function innenSeite(z, g, x, y) {
+  if (g.art === 'mauer' || g.art === 'palisade') return 1;
+  if (g.art === 'turm' && g.anMauer) return -1; // Eingang des eingeklinkten Turms liegt vorn (innen)
+  const burg = z.gebaeude[z.herren[g.besitzer].burg];
+  return (burg.x - x) * -SIN[g.w] + (burg.y - y) * COS[g.w] >= 0 ? 1 : -1;
+}
+/** Von der Mauer herunter auf die Innenseite. */
 function herabsteigen(z, u, g) {
-  const burg = z.gebaeude[z.herren[u.besitzer].burg];
   let ziel = kachel(u.x, u.y);
   if (g) {
     const nx = -SIN[g.w], ny = COS[g.w];
-    const sd = (burg.x - u.x) * nx + (burg.y - u.y) * ny >= 0 ? 1 : -1;
+    const sd = innenSeite(z, g, u.x, u.y);
     ziel = kachel(u.x + Math.trunc(nx * sd * (Math.trunc(g.t / 2) + 600) / 1024), u.y + Math.trunc(ny * sd * (Math.trunc(g.t / 2) + 600) / 1024));
   }
   const n = naechsteBegehbare(z, ziel, 'buerger', 3);
@@ -191,9 +197,9 @@ function aufDieMauer(z, u) {
   // Feinde ganz nah? Erst wehren.
   const e = naechster(z, u, 'raeuber', 1600);
   if (e) { kaempfe(z, u, e); return; }
-  const burg = z.gebaeude[z.herren[u.besitzer].burg];
+  // Auf der Innenseite hinauf: bei Mauern der Wehrgang, beim eingeklinkten Turm der Eingang
   const nx = -SIN[g.w], ny = COS[g.w];
-  const sd = (burg.x - hb.x) * nx + (burg.y - hb.y) * ny >= 0 ? 1 : -1;
+  const sd = innenSeite(z, g, hb.x, hb.y);
   const off = Math.trunc(g.t / 2) + 650;
   const ax = hb.x + Math.trunc(nx * sd * off / 1024), ay = hb.y + Math.trunc(ny * sd * off / 1024);
   u.zustand = 'marsch';
@@ -285,6 +291,16 @@ function pluendern(z, u, g) {
 
 export function gebaeudeZerstoert(z, g) {
   const typ = GEBAEUDE[g.art];
+  if (g.art === 'hof' || g.art === 'viehhof') {
+    // Höfe bleiben als Ruine stehen: kein sofortiger Neubau. Die Felder bleiben und verwildern mit der Zeit
+    // (wirtschaft.js felderVerwittern); der Herr kann gegen Holz und Gold beim Wiederaufbau helfen.
+    g.zustand = 'ruine'; g.hp = 0; g.belegt = 0; g.brandTick = z.tick;
+    for (const id of g.felder) { const f = z.felder[id]; if (!f.weg) f.verfall = f.verfall || 0; }
+    z.version++;
+    ereignis(z, { typ: 'hofBrand', herr: g.besitzer, id: g.id });
+    meldung(z, g.besitzer, `${typ.name} wurde niedergebrannt! Ohne deine Hilfe verwildern die Felder.`, 'schlecht');
+    return;
+  }
   g.zustand = 'weg'; g.hp = 0;
   for (const id of g.felder) z.felder[id].weg = true;
   z.version++;

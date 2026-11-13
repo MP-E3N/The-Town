@@ -15,12 +15,14 @@ import { karteFuer } from '../sim/karte.js';
 import { abgeleitet } from '../sim/abgeleitet.js';
 import { wegGecached } from '../sim/pfad.js';
 import { tuer, tuerKachel } from '../sim/baumeister.js';
-import { hash32, datum } from '../sim/lib.js';
+import { hash32, datum, strassenLinie, eckeRund } from '../sim/lib.js';
 import { erzeugeGelaende, zeichneGelaende, vorrendern } from './gelaende.js';
 import { gebaeudeSprite, baeume, figurSprites, figurSchatten, tierSprite, strassenBelag } from './sprites.js';
 import { sicht } from './kamera.js';
 import { kampfwerte } from '../sim/militaer.js';
-import { mauerEnden } from '../sim/befehle.js';
+import { mauerEnden, mauerUmdrehen } from '../sim/befehle.js';
+
+const ECKE_TEXT = ['eckig', 'rund', 'stark rund'];
 import { BREITE as STR_BREITE } from '../sim/strassen.js';
 import { erzeugeDeko, zeichneDeko } from './deko.js';
 
@@ -98,6 +100,37 @@ function flaeche(links, rechts, i0, i1) {
   p.closePath();
   return p;
 }
+/**
+ * Umriss eines Feldes (Rechteck oder Trapez aus der Simulation) mit leicht gerundeten Ecken, in Kacheln.
+ * WARUM gerundet: Echte Äcker haben weiche Enden (der Pflug wendet im Bogen); spitze Trapezecken wirkten hart.
+ * Zwischengespeichert je Feld (Form ändert sich nie, nur ob es weg ist).
+ */
+const umrisse = new WeakMap();
+function feldUmriss(f) {
+  let u = umrisse.get(f);
+  if (u && u.x === f.x && u.y === f.y && u.poly === f.poly) return u;
+  let e;
+  if (f.poly) e = f.poly.map((q) => q / 1000);
+  else {
+    const c = Math.cos(f.w * RAD), s = Math.sin(f.w * RAD), hb = f.b / 2000, ht = f.t / 2000, x = f.x / 1000, y = f.y / 1000;
+    e = [x - c * hb + s * ht, y - s * hb - c * ht, x + c * hb + s * ht, y + s * hb - c * ht, x + c * hb - s * ht, y + s * hb + c * ht, x - c * hb - s * ht, y - s * hb + c * ht];
+  }
+  const pfad = new Path2D();
+  const m = (i) => [(e[i] + e[(i + 2) % 8]) / 2, (e[i + 1] + e[(i + 3) % 8]) / 2];
+  const start = m(6);
+  pfad.moveTo(start[0], start[1]);
+  for (let i = 0; i < 8; i += 2) {
+    const a = m((i + 6) % 8), b = m(i), l = Math.min(Math.hypot(e[i] - a[0], e[i + 1] - a[1]), Math.hypot(e[i] - b[0], e[i + 1] - b[1]));
+    pfad.arcTo(e[i], e[i + 1], b[0], b[1], Math.min(0.7, l * 0.5));
+  }
+  pfad.closePath();
+  let r = 0;
+  for (let i = 0; i < 8; i += 2) r = Math.max(r, Math.hypot(e[i] - f.x / 1000, e[i + 1] - f.y / 1000));
+  u = { x: f.x, y: f.y, poly: f.poly, pfad, r };
+  umrisse.set(f, u);
+  return u;
+}
+
 /** Glattes Rauschen −1..1 entlang des Wegs (mehrere Sinus mit festen Phasen je Straße und Seite). */
 function rausch(s, ph) { return Math.sin(s * 0.9 + ph) * 0.5 + Math.sin(s * 2.3 + ph * 1.9) * 0.3 + Math.sin(s * 5.1 + ph * 3.7) * 0.2; }
 
@@ -109,7 +142,8 @@ function strassenCache(sz, z) {
   const liste = [];
   for (const s of z.strassen) {
     if (s.weg || s.punkte.length < 4) continue; // entfernte Straße
-    const p = s.punkte, n = p.length / 2, breite = s.breite / 1000, hb = breite / 2;
+    // Gerundete Linie aus der Simulation (Ecken nach s.rund), damit Bild und Kollision übereinstimmen
+    const p = strassenLinie(s), n = p.length / 2, breite = s.breite / 1000, hb = breite / 2;
     // 1) gleichmäßig abtasten (alle 0,4 Kacheln)
     const roh = [];
     for (let i = 0; i < n - 1; i++) {
@@ -307,6 +341,29 @@ function punktAuf(w, t) {
   return { x: a[0] + (b[0] - a[0]) * f, y: a[1] + (b[1] - a[1]) * f, w: Math.atan2(b[1] - a[1], b[0] - a[0]) };
 }
 
+/**
+ * Ecken zwischen Mauerstücken, die im Winkel (> 6°) aneinanderstoßen: dort zeichnet die Szene einen Eckstein.
+ * Gehört dem Stück mit der höheren ID (wird später gezeichnet und liegt so über beiden). Zwischengespeichert je z.version.
+ */
+function mauerEcken(sz, z) {
+  if (sz.mauerEcken && sz.mauerEcken.version === z.version) return sz.mauerEcken.liste;
+  const st = z.gebaeude.filter((g) => g.zustand !== 'weg' && (g.art === 'mauer' || g.art === 'palisade'));
+  const liste = [];
+  for (let i = 0; i < st.length; i++) {
+    const a = st[i], ea = mauerEnden(a);
+    for (let j = i + 1; j < st.length; j++) {
+      const b = st[j], eb = mauerEnden(b);
+      let d = Math.abs(((a.w - b.w) % 180 + 180) % 180); d = Math.min(d, 180 - d);
+      if (d <= 6) continue;
+      for (let p = 0; p < 4; p += 2) for (let q = 0; q < 4; q += 2) {
+        if (Math.hypot(ea[p] - eb[q], ea[p + 1] - eb[q + 1]) < 300) liste.push({ id: Math.max(a.id, b.id), x: ea[p] / 1000, y: ea[p + 1] / 1000 });
+      }
+    }
+  }
+  sz.mauerEcken = { version: z.version, liste };
+  return liste;
+}
+
 /** Bürgerhäuser (8 Plätze) bekommen ein eigenes Bild. */
 function spriteArt(g) {
   if (g.art === 'haus' && g.wohn === 8) return 'stadthaus';
@@ -482,39 +539,74 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
   ctx.globalAlpha = 1;
 
   // Felder und Weiden
+  const gewaehlt = ui.auswahl >= 0 ? z.gebaeude[ui.auswahl] : null;
+  const hofFelder = gewaehlt && (gewaehlt.art === 'hof' || gewaehlt.art === 'viehhof') && gewaehlt.zustand !== 'weg' ? new Set(gewaehlt.felder) : null;
   for (const f of z.felder) {
     if (f.weg) continue;
     const fx = f.x / 1000, fy = f.y / 1000, fb = f.b / 1000, ft = f.t / 1000;
-    if (!sichtbar(v, fx, fy, Math.max(fb, ft))) continue;
-    ctx.save(); ctx.translate(fx, fy); ctx.rotate(f.w * RAD);
+    const umriss = feldUmriss(f);
+    if (!sichtbar(v, fx, fy, umriss.r)) continue;
+    // Furchen im Raster des Feldes, über das ganze (Trapez-)Feld gezogen und auf den Umriss beschnitten
+    const ab = umriss.r * 1.2;
+    const wild = (f.verfall || 0) / 1000;
+    ctx.save();
     if (f.art === 'weide') {
-      ctx.fillStyle = 'rgba(110,160,70,0.55)'; ctx.fillRect(-fb / 2, -ft / 2, fb, ft);
+      ctx.fillStyle = 'rgba(110,160,70,0.55)'; ctx.fill(umriss.pfad);
       ctx.strokeStyle = '#6b4a2a'; ctx.lineWidth = 0.05; ctx.setLineDash([0.18, 0.08]);
-      ctx.strokeRect(-fb / 2, -ft / 2, fb, ft); ctx.setLineDash([]);
+      ctx.stroke(umriss.pfad); ctx.setLineDash([]);
     } else {
       const reif = f.phase === 'reif', w = f.phase === 'wachsend' ? Math.min(1, f.stand / 5000) : 0;
       let col;
       if (reif) col = [206, 176, 76];
       else if (w > 0) col = w < 0.5 ? [Math.round(120 - w * 60), Math.round(96 + w * 80), 56] : [Math.round(90 + (w - 0.5) * 140), Math.round(136 + (w - 0.5) * 50), Math.round(56 - (w - 0.5) * 20)];
       else col = [122, 94, 62];
-      ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`; ctx.fillRect(-fb / 2, -ft / 2, fb, ft);
+      ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`; ctx.fill(umriss.pfad);
       if (zoom > 9) {
-        ctx.strokeStyle = `rgba(${col[0] * 0.7},${col[1] * 0.7},${col[2] * 0.7},0.75)`; ctx.lineWidth = 0.06;
+        ctx.save(); ctx.clip(umriss.pfad);
+        ctx.translate(fx, fy); ctx.rotate(f.w * RAD);
+        ctx.strokeStyle = `rgba(${col[0] * 0.7},${col[1] * 0.7},${col[2] * 0.7},${0.75 * (1 - wild)})`; ctx.lineWidth = 0.06;
         ctx.beginPath();
-        for (let x = -fb / 2 + 0.12; x < fb / 2; x += 0.2) { ctx.moveTo(x, -ft / 2 + 0.05); ctx.lineTo(x, ft / 2 - 0.05); }
+        for (let x = -ab + 0.12; x < ab; x += 0.2) { ctx.moveTo(x, -ab); ctx.lineTo(x, ab); }
         ctx.stroke();
-        if ((reif || w > 0.25) && zoom > 26) {
+        if ((reif || w > 0.25) && zoom > 26 && wild < 0.5) {
           ctx.strokeStyle = reif ? 'rgba(240,214,120,0.9)' : 'rgba(150,200,90,0.8)';
           ctx.lineWidth = 0.07; ctx.setLineDash([0.06, 0.05]); ctx.lineDashOffset = Math.sin(sz.zeit * 1.3 + fx) * 0.04;
           ctx.beginPath();
-          for (let x = -fb / 2 + 0.22; x < fb / 2; x += 0.2) { ctx.moveTo(x, -ft / 2 + 0.08); ctx.lineTo(x, ft / 2 - 0.08); }
+          for (let x = -ab + 0.22; x < ab; x += 0.2) { ctx.moveTo(x, -ab); ctx.lineTo(x, ab); }
           ctx.stroke(); ctx.setLineDash([]);
         }
+        ctx.restore();
       }
       ctx.strokeStyle = 'rgba(56,84,40,0.85)'; ctx.lineWidth = 0.08; ctx.setLineDash([0.1, 0.05]);
-      ctx.strokeRect(-fb / 2, -ft / 2, fb, ft); ctx.setLineDash([]);
+      ctx.stroke(umriss.pfad); ctx.setLineDash([]);
+    }
+    // Verwildert (Hof abgebrannt): Unkraut und Gras überziehen das Feld, die Furchen verschwinden
+    if (wild > 0) {
+      ctx.fillStyle = `rgba(96,128,58,${0.75 * wild})`; ctx.fill(umriss.pfad);
+      if (zoom > 12) {
+        ctx.save(); ctx.clip(umriss.pfad);
+        ctx.fillStyle = `rgba(70,104,44,${0.8 * wild})`;
+        for (let i = 0; i < 40 * wild * umriss.r; i++) {
+          const hsh = hash32(f.id, i, 77), px = fx + ((hsh & 1023) / 1023 - 0.5) * 2 * umriss.r, py = fy + (((hsh >> 10) & 1023) / 1023 - 0.5) * 2 * umriss.r;
+          ctx.beginPath(); ctx.arc(px, py, 0.12 + ((hsh >> 20) & 7) * 0.03, 0, 7); ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+    // Hof ausgewählt: seine Felder leuchten auf (Zuordnung Feld → Hof)
+    if (hofFelder && hofFelder.has(f.id)) {
+      ctx.strokeStyle = 'rgba(255,224,110,0.95)'; ctx.lineWidth = Math.max(0.1, 2.5 / zoom); ctx.setLineDash([0.5, 0.25]);
+      ctx.stroke(umriss.pfad); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,224,110,0.12)'; ctx.fill(umriss.pfad);
     }
     ctx.restore();
+  }
+  if (hofFelder) {
+    // Linie vom Hof zu jedem seiner Felder
+    ctx.strokeStyle = 'rgba(255,224,110,0.6)'; ctx.lineWidth = Math.max(0.05, 1.5 / zoom); ctx.setLineDash([0.3, 0.2]);
+    ctx.beginPath();
+    for (const id of hofFelder) { const f = z.felder[id]; if (f.weg) continue; ctx.moveTo(gewaehlt.x / 1000, gewaehlt.y / 1000); ctx.lineTo(f.x / 1000, f.y / 1000); }
+    ctx.stroke(); ctx.setLineDash([]);
   }
 
   // Straßen (Belag, Ränder, Spuren, Brücken)
@@ -587,16 +679,34 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
       ctx.fillStyle = '#a07a4a'; ctx.fillRect(-gb / 2 - 0.3, -gt / 2, 0.25, 0.5);
       ctx.fillStyle = '#9a968c'; ctx.fillRect(gb / 2 + 0.05, gt / 2 - 0.4, 0.3, 0.3);
       ctx.restore();
+    } else if (g.zustand === 'ruine') {
+      // Abgebrannter Hof: verkohlte Reste auf dem Grundriss, Rauch in den ersten Stunden
+      ctx.globalAlpha = 0.45; zeichneGedreht(ctx, sp.cv, gx, gy, gb, gt, g.w * RAD); ctx.globalAlpha = 1;
+      ctx.save(); ctx.translate(gx, gy); ctx.rotate(g.w * RAD);
+      ctx.fillStyle = 'rgba(34,28,24,0.72)'; ctx.fillRect(-gb / 2 + 0.1, -gt / 2 + 0.1, gb - 0.2, gt - 0.2);
+      ctx.strokeStyle = 'rgba(16,12,10,0.95)'; ctx.lineWidth = 0.1;
+      ctx.beginPath(); ctx.moveTo(-gb * 0.4, -gt * 0.3); ctx.lineTo(gb * 0.35, gt * 0.2); ctx.moveTo(gb * 0.3, -gt * 0.35); ctx.lineTo(-gb * 0.25, gt * 0.3); ctx.moveTo(-gb * 0.1, -gt * 0.4); ctx.lineTo(-gb * 0.05, gt * 0.38); ctx.stroke();
+      ctx.restore();
+      if (z.tick - (g.brandTick || 0) < 1200 && Math.random() < dtEcht * 4) partikel(sz, 'qualm', gx + (Math.random() - 0.5) * gb * 0.7, gy + (Math.random() - 0.5) * gt * 0.7, 0.1, -0.3, 3, 0.15);
+      // Hilfe-Zeichen über der Ruine (Klick öffnet den Wiederaufbau)
+      if (zoom > 8 && g.besitzer === 0) {
+        const s = Math.max(0.5, 16 / zoom), pul = 0.85 + 0.15 * Math.sin(sz.zeit * 4);
+        ctx.fillStyle = `rgba(230,170,60,${pul})`; ctx.strokeStyle = '#2a1a0a'; ctx.lineWidth = s * 0.12;
+        ctx.beginPath(); ctx.arc(gx, gy - gt / 2 - s, s * 0.7, 0, 7); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#2a1a0a'; ctx.font = `bold ${s}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('⚒', gx, gy - gt / 2 - s * 0.95); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+      }
     } else {
       zeichneGedreht(ctx, sp.cv, gx, gy, gb, gt, g.w * RAD);
-      // Mauerknoten: Pfeiler an den Enden schließen Ecken und zeigen die Rasterpunkte im Bild
+      // Mauerecken: Wo zwei Stücke im Winkel aneinanderstoßen, schließt ein Eckstein den Keil — in der Farbe des
+      // Wehrgangs, ohne Ring. WARUM keine Pfeiler mehr: Sie sahen aus wie Kontrollpunkte (Nutzerwunsch Runde 9);
+      // die Rasterpunkte zeigt nur noch das Mauer-/Turm-Werkzeug oder ein ausgewähltes Mauerstück.
       if (g.art === 'mauer' || g.art === 'palisade') {
-        const e = mauerEnden(g), stein = g.art === 'mauer';
-        for (let i = 0; i < 4; i += 2) {
-          ctx.fillStyle = stein ? '#8e897e' : '#4a3018'; ctx.beginPath(); ctx.arc(e[i] / 1000, e[i + 1] / 1000, gt * 0.62, 0, 7); ctx.fill();
-          ctx.fillStyle = stein ? '#bdb6a6' : '#9a6e42'; ctx.beginPath(); ctx.arc(e[i] / 1000, e[i + 1] / 1000, gt * 0.45, 0, 7); ctx.fill();
-          // Winter: Schneehaube auf dem Pfeiler (die Mauer-Bilder sind schon beschneit, die Knoten fehlten)
-          if (winter) { ctx.fillStyle = 'rgba(240,244,250,0.82)'; ctx.beginPath(); ctx.arc(e[i] / 1000 - gt * 0.06, e[i + 1] / 1000 - gt * 0.06, gt * 0.36, 0, 7); ctx.fill(); }
+        const stein = g.art === 'mauer';
+        for (const q of mauerEcken(sz, z)) {
+          if (q.id !== g.id) continue;
+          ctx.fillStyle = stein ? (winter ? '#dfe2e6' : '#a49d8e') : '#6a4a2a';
+          ctx.beginPath(); ctx.arc(q.x, q.y, gt * (stein ? 0.5 : 0.45), 0, 7); ctx.fill();
         }
       }
       if (g.hp < g.hpMax && zoom > 14 && !GEBAEUDE[g.art].begehbar) {
@@ -879,6 +989,12 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
       ctx.save(); ctx.translate(g.x / 1000, g.y / 1000); ctx.rotate(g.w * RAD);
       ctx.strokeStyle = '#f0d070'; ctx.lineWidth = Math.max(0.06, 2 / zoom); ctx.strokeRect(-g.b / 2000 - 0.1, -g.t / 2000 - 0.1, g.b / 1000 + 0.2, g.t / 1000 + 0.2);
       ctx.restore();
+      // Ausgewähltes Mauerstück: seine Rasterpunkte (Enden) zeigen
+      if (GEBAEUDE[g.art].mauer && g.art !== 'eckturm') {
+        const e = mauerEnden(g), r = Math.max(0.2, 7 / zoom);
+        ctx.fillStyle = 'rgba(240,210,120,0.9)'; ctx.strokeStyle = '#2a2014'; ctx.lineWidth = Math.max(0.03, 1.5 / zoom);
+        for (let i = 0; i < 4; i += 2) { ctx.beginPath(); ctx.arc(e[i] / 1000, e[i + 1] / 1000, r, 0, 7); ctx.fill(); ctx.stroke(); }
+      }
     }
   }
   zeichneWerkzeug(ctx, z, ui, winter, zoom);
@@ -1085,14 +1201,75 @@ function zeichneWerkzeug(ctx, z, ui, winter, zoom) {
     ctx.beginPath(); ctx.moveTo(0, -typ.t / 2000); ctx.lineTo(0, -typ.t / 2000 - 0.5); ctx.stroke();
     ctx.restore();
     if (GEBAEUDE[w.art].schiesst) { ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([0.3, 0.3]); ctx.beginPath(); ctx.arc(gs.x / 1000, gs.y / 1000, KAMPF.turm.reichweite / 1000, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+    if (gs.anMauer) {
+      // Eingang zeigt zur Mauer-Innenseite (Turm-Front = −v des Turms)
+      const fx = Math.sin(gs.w * RAD), fy = -Math.cos(gs.w * RAD), d = typ.t / 2000 + 0.35;
+      ctx.fillStyle = '#7cf07c'; ctx.beginPath();
+      ctx.moveTo(gs.x / 1000 + fx * (d + 0.5), gs.y / 1000 + fy * (d + 0.5));
+      ctx.lineTo(gs.x / 1000 + fx * d - fy * 0.3, gs.y / 1000 + fy * d + fx * 0.3); ctx.lineTo(gs.x / 1000 + fx * d + fy * 0.3, gs.y / 1000 + fy * d - fx * 0.3); ctx.fill();
+      ctx.fillStyle = '#f0e0b0'; ctx.font = `${13 / zoom}px sans-serif`;
+      ctx.fillText('in der Mauer · Eingang innen', gs.x / 1000 + 1, gs.y / 1000 - 1);
+    }
   } else if (w.typ === 'mauer' && ui.mauerStart) {
     const ex = ui.fang ? ui.fang.x : mx, ey = ui.fang ? ui.fang.y : my;
     ctx.strokeStyle = w.art === 'mauer' ? 'rgba(200,200,200,0.85)' : 'rgba(160,110,60,0.9)'; ctx.lineWidth = GEBAEUDE[w.art].t / 1000;
     ctx.setLineDash([0.4, 0.15]);
     ctx.beginPath(); ctx.moveTo(ui.mauerStart.x / 1000, ui.mauerStart.y / 1000); ctx.lineTo(ex, ey); ctx.stroke(); ctx.setLineDash([]);
+    // Außenseite (Zinnen) wie der Befehl sie legen wird: kleine Zinnen-Klötze außen, Pfeil „außen“
+    let ax = ui.mauerStart.x, ay = ui.mauerStart.y, bx = Math.round(ex * 1000), by = Math.round(ey * 1000);
+    if (Math.hypot(bx - ax, by - ay) > 400) {
+      if (mauerUmdrehen(z, 0, ax, ay, bx, by, !!ui.mauerTauschen)) [ax, ay, bx, by] = [bx, by, ax, ay];
+      const l = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / l, uy = (by - ay) / l, ox = uy, oy = -ux; // außen = links der Zugrichtung
+      const o = GEBAEUDE[w.art].t / 2000 + 0.12;
+      ctx.fillStyle = 'rgba(235,225,200,0.95)';
+      for (let s = 0.3; s < l / 1000; s += 0.55) ctx.fillRect(ax / 1000 + ux * s + ox * o - 0.1, ay / 1000 + uy * s + oy * o - 0.1, 0.2, 0.2);
+      const cx = (ax + bx) / 2000, cy = (ay + by) / 2000;
+      ctx.fillStyle = '#f0e0b0'; ctx.font = `${13 / zoom}px sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText('außen', cx + ox * (o + 0.6), cy + oy * (o + 0.6)); ctx.fillText('innen', cx - ox * (o + 0.6), cy - oy * (o + 0.6));
+      ctx.textAlign = 'start';
+    }
     const len = Math.hypot(ex - ui.mauerStart.x / 1000, ey - ui.mauerStart.y / 1000);
     ctx.fillStyle = '#f0e0b0'; ctx.font = `${14 / zoom}px sans-serif`;
-    ctx.fillText(`${Math.ceil(len * 1000 / GEBAEUDE[w.art].b)} Stück`, ex + 0.4, ey - 0.4);
+    ctx.fillText(`${Math.ceil(len * 1000 / GEBAEUDE[w.art].b)} Stück · R = Seite tauschen`, ex + 0.4, ey - 0.4);
+  } else if (w.typ === 'strasseEdit') {
+    // Eckpunkte der Straße unter der Maus: ■ eckig, ● rund, ◎ stark rund; Enden als Raute. Ziehen = verschieben.
+    const id = ui.punktZiehen ? ui.punktZiehen.id : ui.strasseUnterMaus;
+    if (id >= 0 && z.strassen[id] && !z.strassen[id].weg) {
+      const s = z.strassen[id], p = s.punkte, n = p.length / 2, r = Math.max(0.16, 6 / zoom);
+      ctx.strokeStyle = 'rgba(110,170,255,0.45)'; ctx.lineWidth = s.breite / 1000 + 0.25; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const lin = strassenLinie(s);
+      ctx.beginPath(); ctx.moveTo(lin[0] / 1000, lin[1] / 1000); for (let i = 2; i < lin.length; i += 2) ctx.lineTo(lin[i] / 1000, lin[i + 1] / 1000); ctx.stroke();
+      ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = Math.max(0.03, 1 / zoom); ctx.setLineDash([0.2, 0.15]);
+      ctx.beginPath(); ctx.moveTo(p[0] / 1000, p[1] / 1000); for (let i = 1; i < n; i++) ctx.lineTo(p[2 * i] / 1000, p[2 * i + 1] / 1000); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = '#1a1408'; ctx.lineWidth = Math.max(0.03, 1.5 / zoom);
+      for (let i = 0; i < n; i++) {
+        const x = p[2 * i] / 1000, y = p[2 * i + 1] / 1000, an = ui.eckeFang && ui.eckeFang.id === id && ui.eckeFang.i === i;
+        const rr = an ? r * 1.5 : r;
+        ctx.fillStyle = an ? 'rgba(124,240,124,0.95)' : 'rgba(240,210,120,0.9)';
+        ctx.beginPath();
+        if (i === 0 || i === n - 1) { ctx.moveTo(x, y - rr); ctx.lineTo(x + rr, y); ctx.lineTo(x, y + rr); ctx.lineTo(x - rr, y); ctx.closePath(); }
+        else if (eckeRund(s, i) === 0) ctx.rect(x - rr * 0.85, y - rr * 0.85, rr * 1.7, rr * 1.7);
+        else ctx.arc(x, y, rr, 0, 7);
+        ctx.fill(); ctx.stroke();
+        if (i > 0 && i < n - 1 && eckeRund(s, i) === 2) { ctx.beginPath(); ctx.arc(x, y, rr * 1.6, 0, 7); ctx.stroke(); }
+      }
+      if (ui.eckeFang && ui.eckeFang.id === id && !ui.punktZiehen) {
+        const q = ui.eckeFang;
+        ctx.fillStyle = '#f0e0b0'; ctx.font = `${13 / zoom}px sans-serif`;
+        ctx.fillText(q.ende ? 'Ende · ziehen = verschieben' : `Ecke ${ECKE_TEXT[eckeRund(s, q.i)]} · Klick = ${ECKE_TEXT[{ 1: 2, 2: 0, 0: 1 }[eckeRund(s, q.i)]]} · ziehen = verschieben`, q.x + 0.5, q.y - 0.5);
+      }
+      if (ui.punktZiehen) {
+        const d = ui.punktZiehen, i = d.i;
+        ctx.strokeStyle = d.grund ? 'rgba(230,70,60,0.85)' : 'rgba(124,230,124,0.85)'; ctx.lineWidth = s.breite / 1000; ctx.setLineDash([0.35, 0.2]);
+        ctx.beginPath();
+        if (i > 0) { ctx.moveTo(p[2 * i - 2] / 1000, p[2 * i - 1] / 1000); ctx.lineTo(d.x, d.y); }
+        if (i < n - 1) { ctx.moveTo(d.x, d.y); ctx.lineTo(p[2 * i + 2] / 1000, p[2 * i + 3] / 1000); }
+        ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = '#f0e0b0'; ctx.font = `${13 / zoom}px sans-serif`;
+        ctx.fillText(d.grund || 'loslassen = verschieben', d.x + 0.5, d.y - 0.5);
+      }
+    }
   } else if (w.typ === 'strasse') {
     // Linienzug der neuen Straße: gesetzte Punkte + Stück bis zur Maus (grün = geht, rot = geht nicht)
     const pk = ui.strassenPunkte, m = ui.strassenFang || ui.maus, br = STR_BREITE[w.art] / 1000;

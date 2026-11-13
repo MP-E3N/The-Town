@@ -43,7 +43,7 @@ function setzeTempo(n) {
   panels.aktualisiere();
 }
 function werkzeug(w) {
-  ui.werkzeug = w; ui.mauerStart = null; ui.strassenPunkte = []; ui.geist = null; ui.drehung = 0;
+  ui.werkzeug = w; ui.mauerStart = null; ui.strassenPunkte = []; ui.geist = null; ui.drehung = 0; ui.eckeFang = null; ui.punktZiehen = null;
   canvas.classList.toggle('werkzeug', !!w);
   eingabe && eingabe.geistAktualisieren();
   panels.aktualisiere();
@@ -53,7 +53,9 @@ function zurBurg(sofort = false) {
   if (sofort) { kamera.x = (b.x + m.x) / 2000; kamera.y = (b.y + m.y) / 2000; } else fliegeZu(kamera, (b.x + m.x) / 2000, (b.y + m.y) / 2000);
 }
 
-const panels = erzeugePanels(() => verbindung, ui, { setzeTempo, werkzeug });
+/** Kamera zu einem Gebäude fliegen (Popup „Hinsehen“). */
+function zeigeGebaeude(id) { const g = zustand.gebaeude[id]; if (g) fliegeZu(kamera, g.x / 1000, g.y / 1000); }
+const panels = erzeugePanels(() => verbindung, ui, { setzeTempo, werkzeug, zeigeGebaeude });
 const eingabe = verbindeEingabe(canvas, { verbindung: () => verbindung, kamera, ui, setzeTempo, werkzeug, zurBurg, letztesTempo: () => letztesTempo, szeneZeit: () => szene.zeit, auswahlGeaendert: () => panels.aktualisiere(true) });
 
 document.getElementById('start').addEventListener('click', () => {

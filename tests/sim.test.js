@@ -18,7 +18,9 @@ import { begehbar, findePfad } from '../sim/pfad.js';
 import { kachel } from '../sim/lib.js';
 import { karteFuer } from '../sim/karte.js';
 import { grundstueck } from '../sim/baumeister.js';
-import { ueberlappt, abstandStrecke, winkelVon } from '../sim/lib.js';
+import { ueberlappt, abstandStrecke, winkelVon, strassenLinie, SIN, COS } from '../sim/lib.js';
+import { strasseHinzufuegen } from '../sim/strassen.js';
+import { gebaeudeZerstoert } from '../sim/militaer.js';
 import { abgeleitet } from '../sim/abgeleitet.js';
 import { GEBAEUDE } from '../data/gebaeude.js';
 
@@ -266,6 +268,68 @@ for (const mart of ['mauer', 'palisade']) {
   pruefe('Heilung: Verwundeter geht trotz Sammelpunkt zur Burg', u.zustand === 'heilen' && Math.hypot(u.x - burg.x, u.y - burg.y) < 6000, Math.round(Math.hypot(u.x - burg.x, u.y - burg.y) / 1000) + ' Kacheln');
   for (let i = 0; i < 160; i++) tick(z, []);
   pruefe('Heilung: in der Burg schnell wieder gesund (≈ 30 s)', u.hp === u.hpMax, u.hp + '/' + u.hpMax);
+}
+
+// 4g) Runde 9: Mauer-Außenseite, Turm in der Mauer, Trapezfelder, Hofbrand, Straßenecken, Kirche
+{
+  const z = erzeugeZustand(42);
+  const h = z.herren[0], burg = z.gebaeude[h.burg], m = z.gebaeude[h.markt];
+  burg.inhalt.stein += 400; burg.inhalt.holz += 400; burg.inhalt.gold += 400; summieren(z, 0);
+  // Mauer südlich vom Markt, einmal in jede Richtung gezogen: Innenseite (+v) zeigt immer zum Markt
+  const innenOk = [];
+  for (const [ax, bx] of [[-4000, 4000], [4000, -4000]]) {
+    const vor = z.gebaeude.length;
+    befehlAnwenden(z, { typ: 'mauer', art: 'palisade', ax: m.x + ax, ay: m.y + 7000, bx: m.x + bx, by: m.y + 7000, spieler: 0 });
+    const st = z.gebaeude.slice(vor).filter((g) => g.art === 'palisade');
+    innenOk.push(st.length > 0 && st.every((g) => (m.x - g.x) * -SIN[g.w] + (m.y - g.y) * COS[g.w] > 0));
+  }
+  pruefe('Mauer: Innenseite (Wehrgang) zeigt zum Markt, egal wie gezogen', innenOk.every(Boolean), innenOk.join(','));
+  const vor2 = z.gebaeude.length;
+  befehlAnwenden(z, { typ: 'mauer', art: 'palisade', ax: m.x - 4000, ay: m.y + 10000, bx: m.x + 4000, by: m.y + 10000, tauschen: true, spieler: 0 });
+  const getauscht = z.gebaeude.slice(vor2).filter((g) => g.art === 'palisade');
+  pruefe('Mauer: R tauscht innen und außen', getauscht.length > 0 && getauscht.every((g) => (m.x - g.x) * -SIN[g.w] + (m.y - g.y) * COS[g.w] < 0));
+  // Wachturm in die Mauer eingeklinkt: Eingang (Front, −v des Turms) zeigt zur Innenseite der Mauer
+  const st = z.gebaeude.find((g) => g.art === 'palisade');
+  st.zustand = 'fertig'; z.version++;
+  const tw = (st.w + 180) % 360;
+  befehlAnwenden(z, { typ: 'bauen', art: 'turm', x: st.x + Math.trunc(SIN[st.w] * 200 / 1024), y: st.y - Math.trunc(COS[st.w] * 200 / 1024), w: tw, anMauer: true, spieler: 0 });
+  const turm = z.gebaeude.find((g) => g.art === 'turm' && g.anMauer);
+  const frontInnen = turm && (SIN[turm.w] * -SIN[st.w] + -COS[turm.w] * COS[st.w]) > 900 * 1024;
+  pruefe('Wachturm in der Mauer, Eingang innen', !!turm && frontInnen);
+  // Straßenecken: gerundet, eckig, stark
+  const s = strasseHinzufuegen(z, [m.x - 20000, m.y + 12000, m.x - 14000, m.y + 12000, m.x - 14000, m.y + 18000], 'weg', 'test');
+  const rund = strassenLinie(s).length / 2;
+  befehlAnwenden(z, { typ: 'strasseEcke', id: s.id, i: 1, rund: 0, spieler: 0 });
+  const eckig = strassenLinie(s).length / 2;
+  befehlAnwenden(z, { typ: 'strassePunkt', id: s.id, i: 1, x: m.x - 13000, y: m.y + 13000, spieler: 0 });
+  pruefe('Straßenecke: rund (Bogen) / eckig / Punkt verschieben', rund > 5 && eckig === 3 && s.punkte[2] === m.x - 13000, `${rund} / ${eckig}`);
+  // Kirche steht in der Flucht von Markt oder Straße
+  const ki = z.gebaeude.find((g) => g.art === 'kirche');
+  pruefe('Kirche steht in der Flucht des Marktes', !!ki && ((ki.w - m.w) % 90 + 90) % 90 === 0, ki ? `w ${ki.w}, Markt ${m.w}` : 'keine');
+}
+// 4h) Trapezfelder überlappen nichts; Hofbrand → Ruine, Felder verwildern; Hilfe baut wieder auf
+{
+  const { z } = lauf(42, klugerBot(), 12);
+  const felder = z.felder.filter((f) => !f.weg);
+  let ueber = 0;
+  for (let i = 0; i < felder.length; i++) for (let j = i + 1; j < felder.length; j++) if (ueberlappt(felder[i], felder[j], 0)) ueber++;
+  for (const f of felder) for (const g of z.gebaeude) if (g.zustand !== 'weg' && !GEBAEUDE[g.art].begehbar && !GEBAEUDE[g.art].mauer && ueberlappt(f, g, -50)) ueber++;
+  pruefe('Felder (auch Trapeze) überlappen weder einander noch Gebäude', ueber === 0, `${felder.filter((f) => f.poly).length} Trapeze von ${felder.length}, ${ueber} Überlappungen`);
+  const hof = z.gebaeude.find((g) => g.art === 'hof' && g.zustand === 'fertig' && g.felder.some((id) => !z.felder[id].weg));
+  gebaeudeZerstoert(z, hof);
+  pruefe('Hofbrand: Hof bleibt als Ruine, Felder bleiben', hof.zustand === 'ruine' && hof.felder.some((id) => !z.felder[id].weg));
+  for (let i = 0; i < 600 * 2; i++) tick(z, []);
+  const wild = Math.max(...hof.felder.map((id) => z.felder[id].verfall || 0));
+  pruefe('… nach 2 Tagen: nicht wieder aufgebaut, Felder halb verwildert', hof.zustand === 'ruine' && wild >= 400 && wild <= 600, 'verfall ' + wild);
+  const h = z.herren[0]; h.lager.holz += 50; h.lager.gold += 50; z.gebaeude[h.burg].inhalt.holz += 50; z.gebaeude[h.burg].inhalt.gold += 50;
+  befehlAnwenden(z, { typ: 'wiederaufbau', id: hof.id, spieler: 0 });
+  pruefe('Wiederaufbau mit Hilfe des Herrn beginnt sofort', hof.zustand === 'bau' && hof.arbeit > 0);
+  // Ohne Hilfe: nach den Verfallstagen ist alles fort
+  const z2 = lauf(42, klugerBot(), 12).z;
+  const hof2 = z2.gebaeude.find((g) => g.art === 'hof' && g.zustand === 'fertig');
+  gebaeudeZerstoert(z2, hof2);
+  for (let i = 0; i < 600 * 5; i++) tick(z2, []);
+  pruefe('Ohne Hilfe: Felder verwildert, Ruine aufgegeben', hof2.zustand === 'weg' && hof2.felder.every((id) => z2.felder[id].weg));
 }
 
 // 5) Balance

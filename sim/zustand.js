@@ -17,7 +17,7 @@ import { gebaeudeAnlegen, findePlatz, planeGasse, tuer, tuerKachel, pruefePlatz 
 import { neuerSoldat } from './militaer.js';
 import { arbeitVerteilen } from './wirtschaft.js';
 import { leer, summieren } from './lager.js';
-import { winkelVon, wnorm, kachel, abstand, lokal, SIN, COS } from './lib.js';
+import { winkelVon, wnorm, kachel, abstand, abstandStrecke, lokal, SIN, COS } from './lib.js';
 
 function neuerHerr(id, name) {
   return {
@@ -92,13 +92,22 @@ function marktAnlegen(z, k, platz, burg, handel) {
   // WARUM nicht exakt 270°: Viele Stadtkirchen weichen der Straßenflucht zuliebe ab; ein Portal, das ins Feld
   // oder zum Fluss zeigt, wirkt falsch. Bewertet: Nähe zum Platz, Portal nah an Straße/Platz, wenig Abweichung,
   // Abstand zu Wasser und Burg.
+  // Runde 9: Die Kirche steht in der Flucht von Markt oder Straße (nicht mehr stur geostet) — eine genau nach
+  // Osten gedrehte Kirche zwischen schrägen Gassen wirkte „schief“. Erlaubt sind nur Winkel parallel/quer zum
+  // Markt oder zur nächsten Straße; unter diesen gewinnt der, der am ehesten nach Osten weist.
   const kt = GEBAEUDE.kirche;
   const c = abgeleitet(z);
+  const wd = (a, b) => { const d = Math.abs(wnorm(a) - wnorm(b)); return Math.min(d, 360 - d); };
   let kirche = null, bw = Infinity;
-  for (let rr = 3500; rr <= 10500; rr += 500) {
+  for (let rr = 4000; rr <= 13000; rr += 500) {
     for (let a = 0; a < 360; a += 15) {
       const x = platz.x + Math.trunc(COS[a] * rr / 1024), y = platz.y + Math.trunc(SIN[a] * rr / 1024);
-      for (const w of [270, 255, 285, 240, 300]) {
+      // Richtung der nächsten Straße an dieser Stelle
+      let sw = platz.w, sd = Infinity;
+      for (const s of c.segmente) { const d = abstandStrecke(x, y, s.ax, s.ay, s.bx, s.by); if (d < sd) { sd = d; sw = winkelVon(s.bx - s.ax, s.by - s.ay); } }
+      const winkel = [];
+      for (const basis of [platz.w, sw]) for (const q of [0, 90, 180, 270]) { const w = wnorm(basis + q); if (wd(w, 270) <= 90 && !winkel.includes(w)) winkel.push(w); }
+      for (const w of winkel) {
         const o = { x, y, b: kt.b, t: kt.t, w };
         if (pruefePlatz(z, 0, o, { steilMax: 90, strRand: 200, rand: 400 })) continue;
         const p = tuer(o), tk = kachel(p.x, p.y);
@@ -107,7 +116,9 @@ function marktAnlegen(z, k, platz, burg, handel) {
         if (portal > 3) continue;
         let nass = 0;
         for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const t = kachel(x + dx * 1000, y + dy * 1000); if (t >= 0 && t < k.wasser.length && k.wasser[t]) nass++; }
-        const wert = rr + portal * 1500 + Math.abs(w - 270) * 60 + nass * 900 - Math.min(abstand(x, y, burg.x, burg.y), 14000) / 4;
+        // In der Marktflucht ist am schönsten (der Platz „gehört“ zur Kirche), Straßenflucht ist gut
+        const flucht = wd(w, platz.w) % 90 === 0 ? 0 : 1200;
+        const wert = rr + portal * 1500 + wd(w, 270) * 35 + flucht + nass * 900 - Math.min(abstand(x, y, burg.x, burg.y), 14000) / 4;
         if (wert < bw) { bw = wert; kirche = o; }
       }
     }

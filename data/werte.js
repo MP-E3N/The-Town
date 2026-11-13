@@ -82,6 +82,13 @@ export const FELD = {
   maxHof: 100000000,
 };
 
+/**
+ * Abgebrannter Hof: bleibt als Ruine stehen und wird NICHT von selbst neu gebaut. Der Herr kann beim Wiederaufbau
+ * helfen (hilfe: Waren aus dem Lager; dann ist schon bauAnteil % der Bauarbeit getan). Ohne Hilfe verwildern die
+ * Felder in verfallTage Tagen; danach ist der Grund wieder frei.
+ */
+export const HOF_BRAND = { hilfe: { holz: 10, gold: 15 }, bauAnteil: 50, verfallTage: 4 };
+
 /** Weiden wachsen wie Felder; der Viehhof erzeugt mit der Weidefläche mehr (höchstens doppelt so viel). */
 export const WEIDE = { basis: 22080000, maxFeld: 50000000 };
 

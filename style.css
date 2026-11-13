@@ -113,3 +113,11 @@ h3 { font: 13px Georgia, serif; color: var(--gold); margin: 10px 0 4px; }
 #cheatKnopf[data-tipp]:hover::after { left: auto; right: 0; }
 .bev .zeile span:last-child { font-variant-numeric: tabular-nums; }
 #rechts [data-tipp]:hover::after { left: auto; right: 0; white-space: normal; width: 240px; }
+
+/* Popup (Runde 9): Entscheidung nach einem Hofbrand */
+#popup { position: fixed; left: 50%; top: 96px; transform: translateX(-50%); z-index: 8; min-width: 320px; max-width: 460px;
+  background: rgba(36,26,18,0.97); border: 2px solid #c89a50; border-radius: 8px; padding: 10px 14px; box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+#popup h3 { margin: 0 0 6px; color: #f0c070; }
+#popup .klein { margin-bottom: 4px; }
+#popup .knoepfe { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+#popup button[disabled], #info button[disabled] { opacity: 0.45; cursor: not-allowed; }

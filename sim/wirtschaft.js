@@ -10,7 +10,7 @@
 
 import {
   TICKS_PRO_TAG, TAGE_PRO_JAHRESZEIT, KARTE_B, KARTE_H, TRAGEN, FELD, WALD, BEDARF, STEUER, ZUZUG,
-  MILITAER, ZIEL, NIEDERLAGE_BEWOHNER, TEMPO, WAGEN,
+  MILITAER, ZIEL, NIEDERLAGE_BEWOHNER, TEMPO, WAGEN, HOF_BRAND,
 } from '../data/werte.js';
 import { GEBAEUDE, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
 import { nehmen, geben, naechstesLager, hatKosten, bezahleKosten } from './lager.js';
@@ -76,6 +76,7 @@ export function arbeitVerteilen(z, herr) {
   for (const g of z.gebaeude) {
     if (g.besitzer !== herr || g.zustand === 'weg') continue;
     g.belegt = 0;
+    if (g.zustand === 'ruine') continue; // abgebrannter Hof: niemand arbeitet dort
     if (g.zustand === 'bau') baustellen.push(g);
     else if (GEBAEUDE[g.art].arbeiter) betriebe.push(g);
   }
@@ -204,7 +205,9 @@ function hofArbeit(z, g) {
     const k = karteFuer(z.seed);
     const fr = k.frucht[kachel(f.x, f.y)];
     const basis = Math.floor(FELD.ertrag * (60 + fr) * feldProzent(f) / 100);
-    g.puffer += Math.floor(basis * (100 + Math.floor((f.pflege || 0) * FELD.pflegeBonus / 100)) / 10000);
+    // Verwildertes Feld (der Hof war abgebrannt) trägt entsprechend weniger
+    const wild = 1000 - (f.verfall || 0);
+    g.puffer += Math.floor(Math.floor(basis * (100 + Math.floor((f.pflege || 0) * FELD.pflegeBonus / 100)) / 10000) * wild / 1000);
     f.phase = 'brach'; f.stand = 0; f.pflege = 0;
     ereignis(z, { typ: 'ernte', feld: f.id });
   } else {
@@ -251,6 +254,7 @@ function baustellen(z) {
       g.zustand = 'fertig'; g.hp = g.hpMax; g.belegt = 0;
       z.version++;
       if (typ.auftrag && !typ.mauer) meldung(z, g.besitzer, `${typ.name} ist fertig.`, 'gut');
+      if (g.wiederaufbau) { delete g.wiederaufbau; meldung(z, g.besitzer, `${typ.name} ist wieder aufgebaut.`, 'gut'); }
       ereignis(z, { typ: 'fertig', id: g.id });
     }
   }
@@ -445,9 +449,44 @@ export function wirtschaftTick(z) {
   if (z.tick % 30 === 0) for (let i = 0; i < z.herren.length; i++) arbeitVerteilen(z, i);
   produktion(z);
   felderWachsen(z);
+  if (z.tick % 60 === 40) felderVerwittern(z);
   lieferungen(z);
   baustellen(z);
   anwerben(z);
+}
+
+/**
+ * Felder abgebrannter Höfe verwildern (f.verfall 0..1000 in HOF_BRAND.verfallTage Tagen) und verschwinden dann.
+ * Sind alle Felder fort, wird die Ruine aufgegeben und der Grund ist wieder frei (der Baumeister darf neu planen).
+ * Wird der Hof wieder aufgebaut, roden die Bauern das Unkraut in derselben Zeit wieder heraus.
+ * WARUM nicht sofort weg: Ein niedergebrannter Hof soll ein spürbarer Verlust sein, den man noch retten kann.
+ */
+function felderVerwittern(z) {
+  const schritt = Math.ceil(1000 * 60 / (HOF_BRAND.verfallTage * TICKS_PRO_TAG));
+  for (const g of z.gebaeude) {
+    if ((g.art !== 'hof' && g.art !== 'viehhof') || g.zustand === 'weg') continue;
+    let offen = 0, geaendert = false;
+    for (const id of g.felder) {
+      const f = z.felder[id];
+      if (f.weg || f.verfall === undefined) continue;
+      if (g.zustand === 'ruine') {
+        f.verfall = Math.min(1000, f.verfall + schritt);
+        if (f.verfall >= 1000) { f.weg = true; geaendert = true; continue; }
+        offen++;
+      } else {
+        f.verfall = Math.max(0, f.verfall - schritt);
+        if (f.verfall === 0) delete f.verfall;
+      }
+    }
+    if (g.zustand === 'ruine' && !offen) {
+      g.zustand = 'weg';
+      z.ruinen.push({ x: g.x, y: g.y, b: g.b, t: g.t, w: g.w, tick: z.tick, mauer: false });
+      if (z.ruinen.length > 40) z.ruinen.shift();
+      geaendert = true;
+      meldung(z, g.besitzer, `Die Ruine von ${GEBAEUDE[g.art].name} ist aufgegeben – die Felder sind verwildert.`, 'warn');
+    }
+    if (geaendert) z.version++;
+  }
 }
 
 /** Beschädigte Gebäude werden langsam ausgebessert, solange keine Räuber in der Nähe sind. */

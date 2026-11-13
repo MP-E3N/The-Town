@@ -62,8 +62,13 @@ export function abstand2(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; ret
 export function kachel(x, y) { return Math.floor(y / 1000) * KARTE_B + Math.floor(x / 1000); }
 export function kachelMitte(k) { return { x: (k % KARTE_B) * 1000 + 500, y: Math.floor(k / KARTE_B) * 1000 + 500 }; }
 
-/** Ecken eines gedrehten Rechtecks {x,y,b,t,w}: [x0,y0, x1,y1, x2,y2, x3,y3]. */
+/**
+ * Ecken eines gedrehten Rechtecks {x,y,b,t,w}: [x0,y0, x1,y1, x2,y2, x3,y3].
+ * Hat das Objekt ein konvexes Viereck `poly` (Trapezfeld), sind das seine Ecken — alle Kollisionsprüfungen
+ * (ueberlappt, punktIn, Raster) arbeiten dann mit dem Viereck statt mit dem Kernrechteck.
+ */
 export function ecken(o) {
+  if (o.poly) return o.poly;
   const c = COS[o.w], s = SIN[o.w], hb = o.b / 2, ht = o.t / 2;
   const ux = Math.trunc(c * hb / 1024), uy = Math.trunc(s * hb / 1024);
   const vx = Math.trunc(-s * ht / 1024), vy = Math.trunc(c * ht / 1024);
@@ -76,17 +81,59 @@ export function lokal(o, lu, lv) {
   return { x: o.x + Math.trunc((c * lu - s * lv) / 1024), y: o.y + Math.trunc((s * lu + c * lv) / 1024) };
 }
 
+/**
+ * Trennachsen (Länge 1024) eines Objekts: beim Rechteck seine zwei Achsen, beim Viereck die Normalen der vier Kanten.
+ * WARUM Math.sqrt erlaubt: Die Wurzel ist in IEEE-754 exakt gerundet, also in allen Browsern bitgleich.
+ */
+function achsen(o, e) {
+  if (!o.poly) return [COS[o.w], SIN[o.w], -SIN[o.w], COS[o.w]];
+  const out = [];
+  for (let i = 0; i < 8; i += 2) {
+    const j = (i + 2) % 8, dx = e[j] - e[i], dy = e[j + 1] - e[i + 1], l = Math.sqrt(dx * dx + dy * dy) || 1;
+    out.push(Math.trunc(-dy * 1024 / l), Math.trunc(dx * 1024 / l));
+  }
+  return out;
+}
+
 export function punktIn(o, px, py, rand = 0) {
+  if (o.poly) {
+    // Konvexes Viereck: auf jeder Kantennormale muss der Punkt im Schatten des Vierecks (± rand) liegen.
+    const e = o.poly, ax = achsen(o, e);
+    for (let k = 0; k < ax.length; k += 2) {
+      let mn = Infinity, mx = -Infinity;
+      for (let i = 0; i < 8; i += 2) { const p = e[i] * ax[k] + e[i + 1] * ax[k + 1]; if (p < mn) mn = p; if (p > mx) mx = p; }
+      const q = px * ax[k] + py * ax[k + 1];
+      if (q < mn - rand * 1024 || q > mx + rand * 1024) return false;
+    }
+    return true;
+  }
   const c = COS[o.w], s = SIN[o.w], dx = px - o.x, dy = py - o.y;
   const lu = dx * c + dy * s, lv = -dx * s + dy * c;
   return Math.abs(lu) <= (o.b / 2 + rand) * 1024 && Math.abs(lv) <= (o.t / 2 + rand) * 1024;
 }
 
-/** Überlappen zwei gedrehte Rechtecke (mit Mindestabstand rand)? Trennachsen-Test, ganzzahlig. */
+/** Fläche (Milli-Kacheln²) eines Objekts: Rechteck b×t oder Viereck nach der Gaußschen Trapezformel. */
+export function flaecheVon(o) {
+  if (!o.poly) return o.b * o.t;
+  const e = o.poly;
+  let a = 0;
+  for (let i = 0; i < 8; i += 2) { const j = (i + 2) % 8; a += e[i] * e[j + 1] - e[j] * e[i + 1]; }
+  return Math.abs(Math.trunc(a / 2));
+}
+
+/** Größter Abstand von der Mitte (x,y) zu einer Ecke — für Suchradien. */
+export function radiusVon(o) {
+  if (!o.poly) return Math.max(o.b, o.t);
+  let r = 0;
+  for (let i = 0; i < 8; i += 2) r = Math.max(r, abstand(o.x, o.y, o.poly[i], o.poly[i + 1]));
+  return r;
+}
+
+/** Überlappen zwei gedrehte Rechtecke/Vierecke (mit Mindestabstand rand)? Trennachsen-Test, ganzzahlig. */
 export function ueberlappt(a, b, rand) {
   const ea = ecken(a), eb = ecken(b);
-  const ax = [COS[a.w], SIN[a.w], -SIN[a.w], COS[a.w], COS[b.w], SIN[b.w], -SIN[b.w], COS[b.w]];
-  for (let k = 0; k < 8; k += 2) {
+  const ax = achsen(a, ea).concat(achsen(b, eb));
+  for (let k = 0; k < ax.length; k += 2) {
     const vx = ax[k], vy = ax[k + 1];
     let amin = Infinity, amax = -Infinity, bmin = Infinity, bmax = -Infinity;
     for (let i = 0; i < 8; i += 2) {
@@ -105,6 +152,40 @@ export function abstandStrecke(px, py, ax, ay, bx, by) {
   if (t < 0) t = 0; else if (t > 1) t = 1;
   const qx = ax + Math.trunc(dx * t), qy = ay + Math.trunc(dy * t);
   return abstand(px, py, qx, qy);
+}
+
+/** Rundung einer Straßenecke: 0 = eckig, 1 = rund (Standard), 2 = stark rund. */
+export const ECKE_NAME = ['eckig', 'rund', 'stark rund'];
+export function eckeRund(s, i) { return s.rund && s.rund[i] !== undefined && s.rund[i] !== null ? s.rund[i] : 1; }
+
+/**
+ * Linienzug einer Straße mit gerundeten Ecken (flach, Milli-Kacheln). Simulation (Raster, Kollision, Tore) und
+ * Darstellung benutzen DIESELBE Linie — so liegt das Bild genau auf dem, womit gerechnet wird.
+ * Jede innere Ecke wird durch einen quadratischen Bogen ersetzt, der d vor der Ecke beginnt und d dahinter endet:
+ * rund = 35 % der kürzeren Nachbarstrecke (höchstens 3,5 Kacheln), stark = 49 % (höchstens 9 Kacheln).
+ * WARUM höchstens 49 %: Zwei Nachbarecken teilen sich die Strecke dazwischen, ihre Bögen dürfen sich nicht kreuzen.
+ * Fast gerade Ecken (< 5°) und eckige (0) bleiben, wie sie sind. Ganzzahlig, deterministisch.
+ */
+export function strassenLinie(s) {
+  const p = s.punkte, n = p.length / 2;
+  if (n < 3) return p;
+  const out = [p[0], p[1]];
+  for (let i = 1; i < n - 1; i++) {
+    const px = p[2 * i], py = p[2 * i + 1], ax = p[2 * i - 2], ay = p[2 * i - 1], bx = p[2 * i + 2], by = p[2 * i + 3];
+    const r = eckeRund(s, i), la = abstand(px, py, ax, ay), lb = abstand(px, py, bx, by);
+    const dot = (px - ax) * (bx - px) + (py - ay) * (by - py);
+    if (r === 0 || la < 200 || lb < 200 || dot * 1000 > 996 * la * lb) { out.push(px, py); continue; }
+    const d = Math.min(Math.trunc(Math.min(la, lb) * (r === 2 ? 49 : 35) / 100), r === 2 ? 9000 : 3500);
+    const x1 = px + Math.trunc((ax - px) * d / la), y1 = py + Math.trunc((ay - py) * d / la);
+    const x2 = px + Math.trunc((bx - px) * d / lb), y2 = py + Math.trunc((by - py) * d / lb);
+    const T = Math.max(2, Math.min(12, Math.ceil(d / 350))), T2 = T * T;
+    for (let k = 0; k <= T; k++) {
+      const a = (T - k) * (T - k), m = 2 * (T - k) * k, c = k * k;
+      out.push(Math.trunc((a * x1 + m * px + c * x2) / T2), Math.trunc((a * y1 + m * py + c * y2) / T2));
+    }
+  }
+  out.push(p[p.length - 2], p[p.length - 1]);
+  return out;
 }
 
 /** Ereignis für die Darstellung (Pfeile, Meldungen …). Bleibt nur kurz im Zustand. */

@@ -7,10 +7,10 @@
  */
 
 import { GEBAEUDE, ZONEN, WARENNAME, WAREN, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
-import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME, MILITAER, NIEDERLAGE_BEWOHNER, FELD, KAMPF } from '../data/werte.js';
+import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME, MILITAER, NIEDERLAGE_BEWOHNER, FELD, KAMPF, HOF_BRAND } from '../data/werte.js';
 import { stadtStatus } from '../sim/baumeister.js';
 import { tageBisErnte } from '../sim/wirtschaft.js';
-import { datum } from '../sim/lib.js';
+import { datum, flaecheVon } from '../sim/lib.js';
 
 const $ = (id) => document.getElementById(id);
 const SYMBOL = { nahrung: '🌾', holz: '🪵', stein: '🪨', eisen: '⛓️', speere: '🔱', boegen: '🏹', gold: '🪙' };
@@ -28,11 +28,11 @@ const ZONEN_TEXT = [
 ];
 const AUFTRAG_TEXT = {
   kaserne: 'Bildet Soldaten aus (10 Plätze). Rekrut: 1 Speer oder Bogen + 8 Gold + 1 Bewohner. Unterhalt je Soldat: 1 Nahrung + ⅓ Gold pro Tag. Rekrutieren: fertige Kaserne anklicken.',
-  turm: 'Schießt auf Räuber, schützt Häuser in der Nähe (Sicherheit). Rastet an Mauer-Knoten ein (gelbe Punkte).',
+  turm: 'Schießt auf Räuber, schützt Häuser in der Nähe (Sicherheit). Über einer Mauer oder Palisade rastet er IN die Mauer ein — Eingang auf der Innenseite.',
   schmiede: 'Macht Waffen aus Holz + Eisen. Eisen kommt aus der Erzgrube (Bergbau auf Erz).',
   speicher: 'Zusätzliches Lager: kürzere Wege für die Träger.',
-  palisade: 'Holzwand. Klicke Punkte nacheinander; Rechtsklick beendet. Neue Stücke rasten an Mauer-Enden und Türmen ein (gelbe Punkte). Über Straßen entsteht ein Torhaus mit zwei Türmen.',
-  mauer: 'Steinmauer, viel stabiler. Klicke Punkte nacheinander; Rechtsklick beendet. Rastet an Mauer-Enden und Türmen ein. Soldaten auswählen + Rechtsklick auf Mauer/Turm/Torhaus = Stellung beziehen (halber Schaden, größere Reichweite).',
+  palisade: 'Holzwand mit Laufsteg innen. Klicke Punkte nacheinander; Rechtsklick beendet. Zinnen/Spitzen zeigen nach außen, R tauscht die Seite. Neue Stücke rasten an Mauer-Enden und Türmen ein (gelbe Punkte). Über Straßen entsteht ein Torhaus mit zwei Türmen.',
+  mauer: 'Steinmauer, viel stabiler: Zinnen außen, Wehrgang innen. Klicke Punkte nacheinander; Rechtsklick beendet. R tauscht innen und außen. Rastet an Mauer-Enden und Türmen ein. Soldaten auswählen + Rechtsklick auf Mauer/Turm/Torhaus = Stellung beziehen (halber Schaden, größere Reichweite).',
   sammeln: 'Klick auf die Karte: Soldaten sammeln sich dort. Noch einmal wählen + Rechtsklick = aufheben.',
   abriss: 'Klick auf ein Gebäude reißt es ab (halbes Material zurück).',
 };
@@ -42,7 +42,16 @@ const STRASSEN_TEXT = {
   haupt: 'Hauptstraße (breit, im Stadtkern gepflastert). Punkte klicken; Rechtsklick, Doppelklick oder Enter legt sie an.',
   strasseArt: 'Klick auf eine Straße: Feldweg → Gasse → Hauptstraße → Feldweg.',
   strasseWeg: 'Klick auf eine Straße entfernt sie. Häuser daran bleiben stehen.',
+  strasseEdit: 'Fahre über eine Straße: ihre Eckpunkte erscheinen. Klick auf eine Ecke = rund → stark rund → eckig. Punkt ziehen = verschieben.',
 };
+
+/** Knopf „beim Wiederaufbau helfen“ (Kosten aus HOF_BRAND), ausgegraut, wenn das Lager nicht reicht. */
+function hilfeKnopf(zz, g) {
+  const h = zz.herren[g.besitzer], k = HOF_BRAND.hilfe;
+  const fehlt = Object.keys(k).filter((w) => (h.lager[w] || 0) < k[w]);
+  const preis = Object.entries(k).map(([w, n]) => `${n} ${SYMBOL[w]}`).join(' + ');
+  return `<div class="knoepfe"><button data-wiederaufbau="${g.id}" ${fehlt.length ? 'disabled' : ''} title="Die Bauern bauen sofort wieder auf, die Hälfte der Arbeit ist mit deiner Hilfe schon getan">⚒ Beim Wiederaufbau helfen (${preis})</button></div>` + (fehlt.length ? `<div class="klein" style="color:var(--schlecht)">Es fehlt: ${fehlt.map((w) => WARENNAME[w]).join(', ')}</div>` : '');
+}
 
 function kostenText(art) {
   const k = GEBAEUDE[art].kosten || {};
@@ -90,7 +99,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
   });
   // Straßen-Knöpfe
   const sk = $('strassenKnoepfe');
-  for (const [art, name] of [['weg', 'Feldweg'], ['gasse', 'Gasse'], ['haupt', 'Hauptstraße'], ['strasseArt', '⇅ Umwidmen'], ['strasseWeg', '✖ Entfernen']]) {
+  for (const [art, name] of [['weg', 'Feldweg'], ['gasse', 'Gasse'], ['haupt', 'Hauptstraße'], ['strasseArt', '⇅ Umwidmen'], ['strasseEdit', '✎ Bearbeiten'], ['strasseWeg', '✖ Entfernen']]) {
     const b = document.createElement('button');
     b.dataset.art = art; b.innerHTML = `${name}<small>&nbsp;</small>`; b.dataset.tipp = STRASSEN_TEXT[art];
     sk.appendChild(b);
@@ -98,7 +107,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
   sk.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const art = b.dataset.art;
-    aktionen.werkzeug(art === 'strasseArt' || art === 'strasseWeg' ? { typ: art } : { typ: 'strasse', art });
+    aktionen.werkzeug(art === 'strasseArt' || art === 'strasseWeg' || art === 'strasseEdit' ? { typ: art } : { typ: 'strasse', art });
   });
   // Reiter
   $('reiter').addEventListener('click', (e) => {
@@ -116,6 +125,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
   });
   $('info').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.wiederaufbau) verbindung().senden({ typ: 'wiederaufbau', id: Number(b.dataset.wiederaufbau) });
     if (b.dataset.abriss) { verbindung().senden({ typ: 'abreissen', id: Number(b.dataset.abriss) }); ui.auswahl = -1; }
     if (b.dataset.zu) { ui.auswahl = -1; ui.einheiten.clear(); }
     if (b.dataset.frei) verbindung().senden({ typ: 'einheiten', ids: [...ui.einheiten], aktion: 'frei' });
@@ -139,6 +149,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
   function meldungen() {
     const zz = z();
     for (const e of zz.ereignisse) {
+      if (e.nr > letzteMeldung && e.typ === 'hofBrand' && e.herr === verbindung().spieler) { popupHofbrand(zz, e.id); continue; }
       if (e.nr <= letzteMeldung || e.typ !== 'meldung' || e.herr !== verbindung().spieler) continue;
       const d = datum(e.tick);
       chronik.unshift({ text: e.text, art: e.art, tag: d.tag + 1 });
@@ -153,6 +164,28 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     letzteMeldung = zz.ereignisNr;
     if (chronik.length > 120) chronik.length = 120;
   }
+
+  /**
+   * Popup, wenn Räuber einen Hof niedergebrannt haben: helfen (sofortiger Wiederaufbau) oder später entscheiden.
+   * WARUM ein Popup: Der Hof wird nicht mehr von selbst neu gebaut — die Entscheidung soll man nicht verpassen.
+   */
+  function popupHofbrand(zz, id) {
+    const g = zz.gebaeude[id];
+    if (!g || g.zustand !== 'ruine') return;
+    const el = $('popup');
+    el.innerHTML = `<h3>🔥 ${GEBAEUDE[g.art].name} niedergebrannt</h3>
+      <div class="klein">Räuber haben den Hof angezündet. Die Familie steht vor der Asche. Hilfst du beim Wiederaufbau, beginnen
+      sie sofort — sonst verwildern die Felder in ${HOF_BRAND.verfallTage} Tagen und sind verloren.</div>
+      <div class="klein">Später: Ruine anklicken (⚒-Zeichen über dem Hof).</div>
+      ${hilfeKnopf(zz, g)}<div class="knoepfe"><button data-zeigen="${g.id}">Hinsehen</button><button data-schliessen="1">Später</button></div>`;
+    el.classList.remove('versteckt');
+  }
+  $('popup').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.wiederaufbau) verbindung().senden({ typ: 'wiederaufbau', id: Number(b.dataset.wiederaufbau) });
+    if (b.dataset.zeigen) { ui.auswahl = Number(b.dataset.zeigen); aktionen.zeigeGebaeude && aktionen.zeigeGebaeude(ui.auswahl); }
+    $('popup').classList.add('versteckt');
+  });
 
   function balken(name, wert, text) {
     const farbe = wert >= 75 ? 'var(--gut)' : wert >= 45 ? 'var(--warn)' : 'var(--schlecht)';
@@ -226,6 +259,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
       + (ui.strassenPunkte.length ? `<br>${ui.strassenPunkte.length} Punkt${ui.strassenPunkte.length > 1 ? 'e' : ''} gesetzt.` : '')
       + (ui.strassenGrund ? `<br><span style="color:var(--schlecht)">Geht nicht: ${ui.strassenGrund}</span>` : '');
     else if (w && STRASSEN_TEXT[w.typ]) hinweis = STRASSEN_TEXT[w.typ];
+    else if (w && w.typ === 'mauer') hinweis = `<b>${GEBAEUDE[w.art].name}</b> (${kostenText(w.art)} je Stück): ${AUFTRAG_TEXT[w.art]}<br>Außenseite: <b>${ui.mauerTauschen ? 'getauscht' : 'automatisch (weg von Burg/Markt)'}</b> — Taste R`;
     else if (w) hinweis = AUFTRAG_TEXT[w.art || w.typ];
     $('werkzeugHinweis').innerHTML = hinweis;
 
@@ -324,7 +358,13 @@ export function erzeugePanels(verbindung, ui, aktionen) {
         const typ = GEBAEUDE[g.art];
         const zeilen = [];
         let extra = '';
-        if (g.zustand === 'bau') zeilen.push(`Baustelle: ${Math.floor(Math.min(1, g.arbeit / typ.arbeit) * 100)} % · ${g.belegt} Bauleute ${g.belegt ? '' : '(warten auf freie Hände)'}`);
+        if (g.zustand === 'ruine') {
+          const fl = g.felder.map((id) => zz.felder[id]).filter((f) => !f.weg);
+          const wild = fl.length ? Math.round(fl.reduce((a, f) => a + (f.verfall || 0), 0) / fl.length / 10) : 100;
+          zeilen.push('Abgebrannt. Die Bauern warten auf deine Hilfe — ohne sie baut niemand wieder auf.');
+          zeilen.push(`Felder: ${fl.length} übrig, verwildert ${wild} % (ganz verwildert = verloren)`);
+          extra += hilfeKnopf(zz, g);
+        } else if (g.zustand === 'bau') zeilen.push(`Baustelle: ${Math.floor(Math.min(1, g.arbeit / typ.arbeit) * 100)} % · ${g.belegt} Bauleute ${g.belegt ? '' : '(warten auf freie Hände)'}`);
         else {
           if (typ.arbeiter) zeilen.push(`Arbeiter: ${g.belegt} / ${typ.arbeiter}${g.blockiert ? ' · ' + g.blockiert : ''}`);
           if (typ.ware && g.art !== 'schmiede') zeilen.push(`Erzeugt ${WARENNAME[typ.ware]} · am Gebäude: ${g.puffer} · Träger unterwegs: ${g.traeger}`);
@@ -345,8 +385,10 @@ export function erzeugePanels(verbindung, ui, aktionen) {
               <div class="klein">In Auftrag: ${ws.length ? Object.keys(AUSBILDUNG).filter(zaehl).map((a) => zaehl(a) + ' ' + AUSBILDUNG[a].name).join(', ') : 'niemand'} ${ws.length ? '<button data-rekrut="speer" data-n="0">leeren</button>' : ''}</div>
               <div class="wahl" data-tipp="Wenn an: Plätze werden selbstständig aufgefüllt, solange Waffen, Gold, freie Leute und Vorrat reichen.">Automatisch auffüllen: ${['aus', 'speer', 'bogen'].map((k) => `<button data-ausbildung="${k}" class="${(g.auto || 'aus') === k ? 'an' : ''}">${k === 'aus' ? 'aus' : AUSBILDUNG[k].name}</button>`).join('')}</div></div>`;
           }
+          if (g.art === 'viehhof') zeilen.push(`Weide dieses Hofs (gelb markiert): ${Math.round(g.felder.reduce((a, id) => a + (zz.felder[id].weg ? 0 : flaecheVon(zz.felder[id])), 0) / 1e6)} Kacheln²`);
           if (g.art === 'hof') {
             const ph = { brach: 'brach', wachsend: 'wächst', reif: 'reif' };
+            zeilen.push(`Felder dieses Hofs (gelb markiert): ${g.felder.filter((id) => !zz.felder[id].weg).length} · ${Math.round(g.felder.reduce((a, id) => a + (zz.felder[id].weg ? 0 : flaecheVon(zz.felder[id])), 0) / 1e6)} Kacheln²`);
             zeilen.push('Felder: ' + g.felder.map((id) => { const f = zz.felder[id]; return f.weg ? '—' : ph[f.phase] + (f.phase === 'wachsend' ? ` ${Math.floor(f.stand / 50)}% · gepflegt ${f.pflege || 0}%` : ''); }).join(', '));
             const tun = g.aufgabeFeld >= 0 ? (zz.felder[g.aufgabeFeld].phase === 'reif' ? 'ernten' : 'säen') : g.pflegeFeld >= 0 && g.belegt ? 'hacken und jäten (Feldpflege, bis +' + FELD.pflegeBonus + ' % Ertrag)' : 'nichts zu tun – helfen anderswo';
             zeilen.push('Bauern: ' + tun);

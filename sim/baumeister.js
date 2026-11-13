@@ -18,7 +18,7 @@ import { strasseHinzufuegen, glaetten, anbinden } from './strassen.js';
 import { vorratReicht } from './wirtschaft.js';
 import { begradigen, planeWohngasse, platzRandPlaetze, gassenEndeAnschliessen } from './stadtplaner.js';
 import { geben, nehmen, leer } from './lager.js';
-import { ecken, lokal, ueberlappt, abstandStrecke, abstand, kachel, winkelVon, wnorm, zufall, COS, SIN, meldung } from './lib.js';
+import { ecken, lokal, ueberlappt, abstandStrecke, abstand, kachel, winkelVon, wnorm, zufall, COS, SIN, meldung, flaecheVon, radiusVon, punktIn } from './lib.js';
 
 /** Türpunkt (vor der Front, Richtung Straße). */
 export function tuer(g) { return lokal(g, 0, -(Math.floor(g.t / 2) + 450)); }
@@ -75,7 +75,7 @@ export function pruefePlatz(z, herr, o, opt = {}) {
     }
     if (!w) return 'kein Wasser';
   }
-  const r = Math.max(o.b, o.t);
+  const r = radiusVon(o); // Trapezfelder reichen über ihr Kernrechteck hinaus
   if (opt.keineStrasse !== false) {
     const sr = opt.strRand ?? 120;
     for (const s of c.segmente) {
@@ -290,6 +290,7 @@ export function gebaeudeAnlegen(z, herr, art, o, opt = {}) {
   const felder = (art === 'hof' || art === 'viehhof') && opt.felder && opt.felder.length ? felderWachsen(z, herr, g, opt.felder, art === 'viehhof') : opt.felder || [];
   for (const f of felder) {
     const feld = { id: z.felder.length, hof: g.id, art: art === 'viehhof' ? 'weide' : 'acker', x: f.x, y: f.y, b: f.b, t: f.t, w: f.w, stand: 0, phase: 'brach', weg: false };
+    if (f.poly) feld.poly = f.poly; // Trapezfeld (zwickelFuellen)
     z.felder.push(feld); g.felder.push(feld.id);
     roden(z, herr, feld, 0);
   }
@@ -344,7 +345,62 @@ function felderWachsen(z, herr, hof, felder, weide) {
     }
     if (!gewachsen) break;
   }
-  return r.map(rechteck);
+  return zwickelFuellen(z, herr, hof, r, zone, seitlich, vorn, maxFeld, maxSumme, summe);
+}
+
+/**
+ * Zwickel füllen: Nach dem Rechteck-Wachsen schiebt jedes Feld seine Ecken einzeln weiter hinaus, bis Straße,
+ * Ufer, Nachbar oder Zonenrand sie aufhalten — so entstehen Trapeze und schräge Feldenden, die auch die Keile an
+ * schrägen Wegen und am Wasser nutzen (wie echte Flur). Vorne (zur Straße) bleibt die Kante gerade.
+ * Ecken (lokal am Hof): A vorn links, B vorn rechts, C hinten rechts, D hinten links.
+ * e = [A nach −u, B nach +u, C nach +u, D nach −u, C nach +v, D nach +v] in Milli-Kacheln.
+ * WARUM nur konvexe Vierecke: Kollision (Trennachsen-Test) und Darstellung bleiben einfach und exakt.
+ */
+function zwickelFuellen(z, herr, hof, r, zone, seitlich, vorn, maxFeld, maxSumme, summe) {
+  const ZW_MAX = 6000;
+  const lokPoly = (q, e) => [q.u0 - e[0], q.v0, q.u1 + e[1], q.v0, q.u1 + e[2], q.v1 + e[4], q.u0 - e[3], q.v1 + e[5]];
+  const weltFeld = (q, e) => {
+    const l = lokPoly(q, e), poly = [];
+    for (let i = 0; i < 8; i += 2) { const p = lokal(hof, l[i], l[i + 1]); poly.push(p.x, p.y); }
+    const m = lokal(hof, Math.trunc((q.u0 + q.u1) / 2), Math.trunc((q.v0 + q.v1) / 2));
+    const f = { x: m.x, y: m.y, b: q.u1 - q.u0, t: q.v1 - q.v0, w: hof.w };
+    if (e.some((v) => v > 0)) f.poly = poly;
+    return f;
+  };
+  const konvex = (l) => {
+    let vz = 0;
+    for (let i = 0; i < 8; i += 2) {
+      const j = (i + 2) % 8, k = (i + 4) % 8;
+      const cr = (l[j] - l[i]) * (l[k + 1] - l[j + 1]) - (l[j + 1] - l[i + 1]) * (l[k] - l[j]);
+      if (cr === 0) continue;
+      if (vz === 0) vz = Math.sign(cr); else if (Math.sign(cr) !== vz) return false;
+    }
+    return true;
+  };
+  const ext = r.map(() => [0, 0, 0, 0, 0, 0]);
+  const fl = (i) => flaecheVon(weltFeld(r[i], ext[i]));
+  for (const [schritt, runden] of [[400, 15], [100, 6]]) for (let runde = 0; runde < runden; runde++) {
+    let gewachsen = false;
+    for (let i = 0; i < r.length; i++) {
+      for (let k6 = 0; k6 < 6; k6++) {
+        const p = (k6 + runde + i) % 6, e = ext[i].slice();
+        e[p] += schritt;
+        if (e[p] > ZW_MAX) continue;
+        const l = lokPoly(r[i], e);
+        if (l[0] < -seitlich || l[6] < -seitlich || l[2] > seitlich || l[4] > seitlich || l[1] < vorn) continue;
+        if (!konvex(l)) continue;
+        const kand = weltFeld(r[i], e);
+        const alt = fl(i), neu = flaecheVon(kand);
+        if (neu > maxFeld || summe - alt + neu > maxSumme) continue;
+        const extra = [hof];
+        for (let j = 0; j < r.length; j++) if (j !== i) extra.push(weltFeld(r[j], ext[j]));
+        if (!feldFrei(z, herr, kand, zone, extra)) continue;
+        summe += neu - alt; ext[i] = e; gewachsen = true;
+      }
+    }
+    if (!gewachsen) break;
+  }
+  return r.map((q, i) => weltFeld(q, ext[i]));
 }
 
 /** Darf hier ein (gewachsenes) Feld liegen? Wie pruefePlatz, aber das Innere wird dicht abgetastet. */
@@ -352,6 +408,23 @@ function feldFrei(z, herr, f, zone, extra) {
   if (pruefePlatz(z, herr, f, { steilMax: 1e9, felsOk: true, rand: 120, strRand: 60, extra })) return false;
   const k = karteFuer(z.seed);
   let n = 0, drin = 0;
+  if (f.poly) {
+    // Viereck: bilinear abtasten (Zellmitten, etwa alle 0,7 Kacheln) — liegt automatisch etwas innerhalb der Kanten
+    const e = f.poly;
+    const nu = Math.max(1, Math.ceil(Math.max(abstand(e[0], e[1], e[2], e[3]), abstand(e[6], e[7], e[4], e[5])) / 700));
+    const nv = Math.max(1, Math.ceil(Math.max(abstand(e[0], e[1], e[6], e[7]), abstand(e[2], e[3], e[4], e[5])) / 700));
+    for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
+      const s = 2 * i + 1, t = 2 * j + 1, S = 2 * nu, T = 2 * nv;
+      const x = Math.trunc(((S - s) * (T - t) * e[0] + s * (T - t) * e[2] + s * t * e[4] + (S - s) * t * e[6]) / (S * T));
+      const y = Math.trunc(((S - s) * (T - t) * e[1] + s * (T - t) * e[3] + s * t * e[5] + (S - s) * t * e[7]) / (S * T));
+      if (x < 0 || y < 0 || x >= KARTE_B * 1000 || y >= KARTE_H * 1000) return false;
+      const q = kachel(x, y);
+      if (k.wasser[q] || k.fels[q] > 55 || k.erz[q] > 55 || k.steil[q] > 70) return false;
+      n++;
+      if (z.zone[q] === zone) drin++;
+    }
+    return drin * 100 >= n * 85;
+  }
   // Raster etwa alle 0,7 Kacheln, 0,25 Kacheln vom Rand entfernt
   const hb = Math.max(0, Math.trunc(f.b / 2) - 250), ht = Math.max(0, Math.trunc(f.t / 2) - 250);
   const nu = Math.max(1, Math.ceil(2 * hb / 700)), nv = Math.max(1, Math.ceil(2 * ht / 700));
@@ -377,7 +450,7 @@ export function viehTakt(z, g) {
 
 /** Fläche eines Feldes im Verhältnis zum Normalfeld, in Prozent (Ertrag und Arbeit skalieren damit). */
 export function feldProzent(f) {
-  return Math.max(20, Math.floor(f.b * f.t / ((f.art === 'weide' ? WEIDE.basis : FELD.basis) / 100)));
+  return Math.max(20, Math.floor(flaecheVon(f) / ((f.art === 'weide' ? WEIDE.basis : FELD.basis) / 100)));
 }
 
 /** Bäume unter einem Rechteck fällen; Holz geht ins Lager. */
@@ -395,6 +468,7 @@ function roden(z, herr, o, rand) {
   if (holz) geben(z, herr, null, 'holz', Math.floor(holz / 25), o.x, o.y);
 }
 function pruefeMitte(o, tx, ty, rand) {
+  if (o.poly) return punktIn(o, tx * 1000 + 500, ty * 1000 + 500, rand + 400);
   const c = COS[o.w], s = SIN[o.w], dx = tx * 1000 + 500 - o.x, dy = ty * 1000 + 500 - o.y;
   const lu = dx * c + dy * s, lv = -dx * s + dy * c;
   return Math.abs(lu) <= (o.b / 2 + rand + 400) * 1024 && Math.abs(lv) <= (o.t / 2 + rand + 400) * 1024;
@@ -538,6 +612,7 @@ export function stadtStatus(z, herr) {
   for (const g of z.gebaeude) {
     if (g.besitzer !== herr || g.zustand === 'weg') continue;
     const typ = GEBAEUDE[g.art];
+    if (g.zustand === 'ruine') { st.ruinen = (st.ruinen || 0) + 1; continue; } // abgebrannter Hof: kein Dach, keine Arbeit
     if (g.zustand === 'fertig') {
       st.anzahl[g.art] = (st.anzahl[g.art] || 0) + 1;
       if (typ.wohnplaetze) { st.wohnKap += g.wohn || typ.wohnplaetze; st.haeuser++; }

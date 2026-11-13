@@ -10,7 +10,7 @@
 
 import { KARTE_B, KARTE_H } from '../data/werte.js';
 import { GEBAEUDE } from '../data/gebaeude.js';
-import { ecken, punktIn, kachel, lokal, abstandStrecke, COS, SIN } from './lib.js';
+import { ecken, punktIn, kachel, lokal, abstandStrecke, strassenLinie, COS, SIN } from './lib.js';
 import { karteFuer } from './karte.js';
 
 export const EIMER = 8;
@@ -55,7 +55,8 @@ function baue(z) {
   const eimer = []; for (let i = 0; i < EB * EH; i++) eimer.push([]);
   const segmente = [];
   for (const s of z.strassen) {
-    const p = s.punkte, hb = s.breite / 2;
+    // WARUM die gerundete Linie: Bild und Rechnung sollen dieselbe Kurve kennen (sim/lib.js strassenLinie).
+    const p = strassenLinie(s), hb = s.breite / 2;
     for (let i = 0; i + 3 < p.length; i += 2) {
       const ax = p[i], ay = p[i + 1], bx = p[i + 2], by = p[i + 3];
       segmente.push({ ax, ay, bx, by, hb, x0: Math.min(ax, bx) - hb, x1: Math.max(ax, bx) + hb, y0: Math.min(ay, by) - hb, y1: Math.max(ay, by) + hb, strasse: s.id });

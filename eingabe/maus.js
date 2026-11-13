@@ -13,6 +13,7 @@
 import { GEBAEUDE } from '../data/gebaeude.js';
 import { zuWelt, zoomeUm, begrenze, kameraSchritt } from '../render/kamera.js';
 import { auftragPruefen, mauerEnden, strassePruefen, formationsPlaetze, STRASSEN_ARTEN } from '../sim/befehle.js';
+import { eckeRund } from '../sim/lib.js';
 import { abgeleitet } from '../sim/abgeleitet.js';
 import { punktIn, wnorm } from '../sim/lib.js';
 
@@ -90,6 +91,51 @@ export function verbindeEingabe(canvas, a) {
     return best;
   }
 
+  /**
+   * Wachturm in die Mauer einklinken: nächstes eigenes Mauer-/Palisadenstück, dessen Mittellinie höchstens
+   * 1,1 Kacheln von der Maus entfernt ist. Der Turm sitzt auf der Linie (0,2 Kacheln nach außen vorgeschoben,
+   * wie echte Mauertürme) und ist so gedreht, dass seine Front — der Eingang — zur Innenseite (Wehrgang) zeigt.
+   */
+  function mauerFuerTurm(x, y) {
+    const spieler = a.verbindung().spieler, px = x * 1000, py = y * 1000;
+    let best = null, bd = 1100;
+    for (const g of z().gebaeude) {
+      if (g.zustand === 'weg' || g.besitzer !== spieler || (g.art !== 'mauer' && g.art !== 'palisade')) continue;
+      const e = mauerEnden(g), dx = e[2] - e[0], dy = e[3] - e[1], l2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((px - e[0]) * dx + (py - e[1]) * dy) / l2));
+      const qx = e[0] + dx * t, qy = e[1] + dy * t, d = Math.hypot(qx - px, qy - py);
+      if (d < bd) { bd = d; best = { g, qx, qy }; }
+    }
+    if (!best) return null;
+    const w = best.g.w * Math.PI / 180;
+    return { id: best.g.id, x: Math.round(best.qx + Math.sin(w) * 200), y: Math.round(best.qy - Math.cos(w) * 200), w: wnorm(best.g.w + 180) };
+  }
+
+  /** Eckpunkt einer Straße unter der Maus (Bearbeiten): nächster Punkt im Fangradius, sonst null. */
+  function eckeUnter(x, y) {
+    const r = Math.max(0.45, 12 / kamera.zoom);
+    let best = null, bd = r;
+    for (const s of z().strassen) {
+      if (s.weg || s.punkte.length < 4) continue;
+      const p = s.punkte;
+      for (let i = 0; i < p.length / 2; i++) {
+        const d = Math.hypot(p[2 * i] / 1000 - x, p[2 * i + 1] / 1000 - y);
+        if (d < bd) { bd = d; best = { id: s.id, i, x: p[2 * i] / 1000, y: p[2 * i + 1] / 1000, ende: i === 0 || i === p.length / 2 - 1 }; }
+      }
+    }
+    return best;
+  }
+  /** Prüft das Verschieben eines Eckpunkts (wie der Befehl): null = geht, sonst Grund. */
+  function punktPruefen(id, i, x, y) {
+    const s = z().strassen[id], p = s.punkte, n = p.length / 2;
+    for (const j of [i - 1, i + 1]) {
+      if (j < 0 || j >= n) continue;
+      const g = strassePruefen(z(), a.verbindung().spieler, p[2 * j], p[2 * j + 1], Math.round(x * 1000), Math.round(y * 1000));
+      if (g) return g;
+    }
+    return null;
+  }
+
   /** Straße unter der Maus (für Entfernen/Umwidmen): nächstes Segment innerhalb der halben Breite + Rand. */
   function strasseUnter(x, y) {
     const c = abgeleitet(z());
@@ -153,7 +199,12 @@ export function verbindeEingabe(canvas, a) {
     const w = ui.werkzeug;
     ui.fang = null;
     strassenVorschau();
-    ui.strasseUnterMaus = w && (w.typ === 'strasseWeg' || w.typ === 'strasseArt') && ui.maus ? strasseUnter(ui.maus.x, ui.maus.y) : -1;
+    ui.strasseUnterMaus = w && (w.typ === 'strasseWeg' || w.typ === 'strasseArt' || w.typ === 'strasseEdit') && ui.maus ? strasseUnter(ui.maus.x, ui.maus.y) : -1;
+    if (w && w.typ === 'strasseEdit' && ui.maus && !ui.punktZiehen) {
+      ui.eckeFang = eckeUnter(ui.maus.x, ui.maus.y);
+      if (ui.eckeFang) ui.strasseUnterMaus = ui.eckeFang.id;
+    } else if (!w || w.typ !== 'strasseEdit') ui.eckeFang = null;
+    ui.turmMauer = null;
     if (w && (w.typ === 'mauer' || (w.typ === 'bauen' && w.art === 'turm')) && ui.maus) {
       ui.rasterpunkte = rasterpunkte();
       ui.fang = einrasten(ui.maus);
@@ -161,9 +212,14 @@ export function verbindeEingabe(canvas, a) {
     if (!w || w.typ !== 'bauen' || !ui.maus) { ui.geist = null; return; }
     const typ = GEBAEUDE[w.art];
     const o = { x: Math.round(ui.maus.x * 1000), y: Math.round(ui.maus.y * 1000), b: typ.b, t: typ.t, w: wnorm(winkelZurStrasse(ui.maus.x, ui.maus.y) + ui.drehung) };
-    // Wachturm auf einem Mauerknoten: genau dort, ausgerichtet an der Mauer
-    if (w.art === 'turm' && ui.fang) { o.x = Math.round(ui.fang.x * 1000); o.y = Math.round(ui.fang.y * 1000); o.w = wnorm((ui.fang.w ?? 0) + ui.drehung); }
-    ui.geist = { ...o, grund: auftragPruefen(z(), a.verbindung().spieler, w.art, o) };
+    // Wachturm über einer Mauer: in die Mauer eingeklinkt (Eingang innen); sonst auf einem Mauerknoten
+    let anMauer = false;
+    if (w.art === 'turm') {
+      const m = mauerFuerTurm(ui.maus.x, ui.maus.y);
+      if (m) { o.x = m.x; o.y = m.y; o.w = m.w; anMauer = true; ui.turmMauer = m.id; ui.fang = null; }
+      else if (ui.fang) { o.x = Math.round(ui.fang.x * 1000); o.y = Math.round(ui.fang.y * 1000); o.w = wnorm((ui.fang.w ?? 0) + ui.drehung); }
+    }
+    ui.geist = { ...o, anMauer, grund: auftragPruefen(z(), a.verbindung().spieler, w.art, o) };
   }
 
   function malenBei(p) {
@@ -221,13 +277,13 @@ export function verbindeEingabe(canvas, a) {
     else if (w.typ === 'bauen') {
       geistAktualisieren();
       if (ui.geist && !ui.geist.grund) {
-        v.senden({ typ: 'bauen', art: w.art, x: ui.geist.x, y: ui.geist.y, w: ui.geist.w });
+        v.senden({ typ: 'bauen', art: w.art, x: ui.geist.x, y: ui.geist.y, w: ui.geist.w, anMauer: ui.geist.anMauer });
         if (!e.shiftKey) a.werkzeug(null);
       }
     } else if (w.typ === 'mauer') {
       const f = einrasten(p);
       const q = f ? { x: Math.round(f.x * 1000), y: Math.round(f.y * 1000) } : { x: Math.round(p.x * 1000), y: Math.round(p.y * 1000) };
-      if (ui.mauerStart) v.senden({ typ: 'mauer', art: w.art, ax: ui.mauerStart.x, ay: ui.mauerStart.y, bx: q.x, by: q.y });
+      if (ui.mauerStart) v.senden({ typ: 'mauer', art: w.art, ax: ui.mauerStart.x, ay: ui.mauerStart.y, bx: q.x, by: q.y, tauschen: !!ui.mauerTauschen });
       ui.mauerStart = q;
     } else if (w.typ === 'strasse') {
       const f = strassenFang(p) || p, pk = ui.strassenPunkte;
@@ -238,6 +294,10 @@ export function verbindeEingabe(canvas, a) {
       if (letzter && strassePruefen(z(), v.spieler, letzter.x, letzter.y, q.x, q.y)) return; // rot: Punkt nicht setzen
       pk.push(q);
       strassenVorschau();
+    } else if (w.typ === 'strasseEdit') {
+      // Eckpunkt: Klick = Rundung wechseln, Ziehen = verschieben (entschieden beim Loslassen)
+      const q = eckeUnter(p.x, p.y);
+      if (q) { ziehen = { art: 'punkt', sx: e.clientX, sy: e.clientY, id: q.id, i: q.i, ende: q.ende, bewegt: false }; ui.eckeFang = q; }
     } else if (w.typ === 'strasseWeg' || w.typ === 'strasseArt') {
       const id = strasseUnter(p.x, p.y);
       if (id >= 0) {
@@ -260,7 +320,9 @@ export function verbindeEingabe(canvas, a) {
     if (ziehen) {
       const dx = e.clientX - ziehen.sx, dy = e.clientY - ziehen.sy;
       if (Math.abs(dx) + Math.abs(dy) > (ziehen.art === 'formation' ? 10 : 5)) ziehen.bewegt = true;
-      if (ziehen.art === 'formation') {
+      if (ziehen.art === 'punkt') {
+        ui.punktZiehen = ziehen.bewegt ? { id: ziehen.id, i: ziehen.i, x: p.x, y: p.y, grund: punktPruefen(ziehen.id, ziehen.i, p.x, p.y) } : null;
+      } else if (ziehen.art === 'formation') {
         ui.formation = ziehen.bewegt ? formationBerechnen(ziehen.ax, ziehen.ay, p.x, p.y) : null;
       } else if (ziehen.art === 'schieben') {
         kamera.x = ziehen.kx - dx / kamera.zoom; kamera.y = ziehen.ky - dy / kamera.zoom;
@@ -277,7 +339,17 @@ export function verbindeEingabe(canvas, a) {
     malen = false;
     if (!ziehen) return;
     const p = welt(e);
-    if (ziehen.art === 'formation') {
+    if (ziehen.art === 'punkt') {
+      const v = a.verbindung();
+      if (ziehen.bewegt) {
+        if (!punktPruefen(ziehen.id, ziehen.i, p.x, p.y)) v.senden({ typ: 'strassePunkt', id: ziehen.id, i: ziehen.i, x: Math.round(p.x * 1000), y: Math.round(p.y * 1000) });
+      } else if (!ziehen.ende) {
+        // rund → stark rund → eckig → rund
+        const s = z().strassen[ziehen.id];
+        v.senden({ typ: 'strasseEcke', id: ziehen.id, i: ziehen.i, rund: { 1: 2, 2: 0, 0: 1 }[eckeRund(s, ziehen.i)] ?? 1 });
+      }
+      ui.punktZiehen = null;
+    } else if (ziehen.art === 'formation') {
       const f = ziehen.bewegt ? formationBerechnen(ziehen.ax, ziehen.ay, p.x, p.y) : null;
       if (f) {
         const ids = [...ui.einheiten].filter((id) => z().einheiten.some((u) => u.id === id));
@@ -347,6 +419,7 @@ export function verbindeEingabe(canvas, a) {
     else if (t === '3') a.setzeTempo(4);
     else if (t === 'q') { ui.drehung -= 15; geistAktualisieren(); }
     else if (t === 'e') { ui.drehung += 15; geistAktualisieren(); }
+    else if (t === 'r' && ui.werkzeug && ui.werkzeug.typ === 'mauer') { ui.mauerTauschen = !ui.mauerTauschen; a.auswahlGeaendert(); }
     else if (t === 'z') ui.zonenZeigen = !ui.zonenZeigen;
     else if (t === 'g') { ui.einheiten.clear(); for (const u of eigeneSoldaten()) ui.einheiten.add(u.id); ui.auswahl = -1; a.auswahlGeaendert(); }
     else if (t === 'f' && ui.einheiten.size) a.verbindung().senden({ typ: 'einheiten', ids: [...ui.einheiten], aktion: 'frei' });

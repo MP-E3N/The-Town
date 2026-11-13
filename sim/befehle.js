@@ -21,12 +21,16 @@
  *   {typ:'strasse', art:'weg'|'gasse'|'haupt', punkte:[x0,y0,x1,y1,…]}   Straße selbst anlegen (Linienzug)
  *   {typ:'strasseWeg', id}                        Straße entfernen
  *   {typ:'strasseArt', id, art}                   Straße umwidmen (Feldweg / Gasse / Hauptstraße)
+ *   {typ:'strasseEcke', id, i, rund:0..2}          Ecke i einer Straße eckig / rund / stark rund
+ *   {typ:'strassePunkt', id, i, x, y}             Punkt i einer Straße verschieben
+ *   {typ:'wiederaufbau', id}                      abgebrannten Hof gegen Holz + Gold sofort wieder aufbauen
  *   {typ:'cheat'}                                 Testhilfe: +200 von jeder Ware in die Burg
+ *   mauer kennt optional tauschen:true = Außenseite (Zinnen) auf die andere Seite
  *   einheiten mit aktion:'gehe' kennt optional w (Blickrichtung, Grad) und reihe (Mann je Reihe) = Formation
  */
 
-import { KARTE_B, KARTE_H, LAND_RADIUS } from '../data/werte.js';
-import { GEBAEUDE, ZONEN, WAREN, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
+import { KARTE_B, KARTE_H, LAND_RADIUS, HOF_BRAND } from '../data/werte.js';
+import { GEBAEUDE, ZONEN, WAREN, WARENNAME, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
 import { TEMPO } from '../data/werte.js';
 import { wegGecached, pfadLaenge } from './pfad.js';
 import { tuerKachel } from './baumeister.js';
@@ -34,7 +38,7 @@ import { summieren } from './lager.js';
 import { karteFuer } from './karte.js';
 import { pruefePlatz, gebaeudeAnlegen, bezahlen } from './baumeister.js';
 import { toreSetzen, mauerKreuztStrasse, strasseHinzufuegen, BREITE } from './strassen.js';
-import { geben } from './lager.js';
+import { geben, nehmen } from './lager.js';
 import { abgeleitet, objekteNahe } from './abgeleitet.js';
 import { abstand, winkelVon, wnorm, meldung, lokal, punktIn, kachel, ueberlappt, SIN, COS } from './lib.js';
 
@@ -92,6 +96,21 @@ export function formationsPlaetze(n, x, y, w, reihe) {
   return out;
 }
 
+/**
+ * Innen und außen einer Mauer: Jedes Mauerstück hat seine Außenseite (Zinnen, Brustwehr) auf lokal −v und den
+ * Wehrgang innen auf +v. Von selbst liegt „innen“ auf der Seite der Burg oder des Marktes (was näher an der Mauer
+ * liegt); `tauschen` dreht das um (Taste R beim Mauerbau).
+ * Gibt true zurück, wenn die Linie a→b umgedreht werden muss.
+ */
+export function mauerUmdrehen(z, herr, ax, ay, bx, by, tauschen) {
+  const h = z.herren[herr], burg = z.gebaeude[h.burg], markt = z.gebaeude[h.markt] || burg;
+  const mx = Math.trunc((ax + bx) / 2), my = Math.trunc((ay + by) / 2);
+  const ref = abstand(mx, my, burg.x, burg.y) <= abstand(mx, my, markt.x, markt.y) ? burg : markt;
+  const w = winkelVon(bx - ax, by - ay);
+  const innenPlus = (ref.x - mx) * -SIN[w] + (ref.y - my) * COS[w] >= 0;
+  return innenPlus === tauschen;
+}
+
 /** Enden eines Mauerstücks (Rasterpunkte); Türme haben ihren Mittelpunkt als Knoten. */
 export function mauerEnden(g) {
   if (g.art === 'turm' || g.art === 'eckturm') return [g.x, g.y, g.x, g.y];
@@ -111,7 +130,8 @@ export function mauerPlaetze(z, start, n) {
     const g = reihe[qi];
     if (g.art === 'turm' || g.art === 'eckturm') for (const [lu, lv] of [[0, 0], [-300, 250], [300, 250]]) { const p = lokal(g, lu, lv); out.push({ id: g.id, x: p.x, y: p.y }); }
     else if (g.art === 'tor') for (const sd of [-1, 1]) { const p = lokal(g, sd * (Math.trunc(g.b / 2) - 450), 0); out.push({ id: g.id, x: p.x, y: p.y }); }
-    else for (const sd of [-1, 1]) { const p = lokal(g, sd * Math.trunc(g.b / 4), 0); out.push({ id: g.id, x: p.x, y: p.y }); }
+    // Auf dem Wehrgang (innen, hinter der Brustwehr) — nicht auf der Mauerkrone mitten über den Zinnen
+    else for (const sd of [-1, 1]) { const p = lokal(g, sd * Math.trunc(g.b / 4), Math.trunc(g.t / 4)); out.push({ id: g.id, x: p.x, y: p.y }); }
     const e = mauerEnden(g);
     for (const h of z.gebaeude) {
       if (gesehen.has(h.id) || !istWehr(h)) continue;
@@ -173,7 +193,8 @@ function endTuermeSetzen(z, herr, art, neu) {
       // Lücke zwischen Mauerende und Turm mit einem Stück Mauer schließen
       if (d > halb) {
         const mx = ex + Math.trunc(dx * (d - halb) / 2 / l), my = ey + Math.trunc(dy * (d - halb) / 2 / l);
-        const st = gebaeudeAnlegen(z, herr, art, { x: mx, y: my, b: d - halb + 160, t: GEBAEUDE[art].t, w }, { auftrag: true, keinWeg: true });
+        // WARUM g.w: Das Verlängerungsstück hat seine Zinnen auf derselben Seite wie die Mauer, die es fortsetzt.
+        const st = gebaeudeAnlegen(z, herr, art, { x: mx, y: my, b: d - halb + 160, t: GEBAEUDE[art].t, w: g.w }, { auftrag: true, keinWeg: true });
         st.ende = [ex, ey, ex + Math.trunc(dx * (d - halb) / l), ey + Math.trunc(dy * (d - halb) / l)];
       }
       const t = gebaeudeAnlegen(z, herr, 'eckturm', o, { auftrag: true, keinWeg: true });
@@ -238,14 +259,18 @@ export function befehlAnwenden(z, b) {
       const grund = auftragPruefen(z, herr, art, o);
       if (grund) { meldung(z, herr, `${typ.name} geht hier nicht: ${grund}.`, 'warn'); return; }
       bezahlen(z, herr, art, o.x, o.y);
-      gebaeudeAnlegen(z, herr, art, o, { auftrag: true });
-      meldung(z, herr, `${typ.name} in Auftrag gegeben.`, 'info');
+      const neu = gebaeudeAnlegen(z, herr, art, o, { auftrag: true, keinWeg: art === 'turm' && !!b.anMauer });
+      // In die Mauer eingeklinkter Wachturm: Eingang (Front) auf der Mauer-Innenseite, Soldaten steigen dort auf
+      if (art === 'turm' && b.anMauer) neu.anMauer = true;
+      meldung(z, herr, `${typ.name} in Auftrag gegeben${neu.anMauer ? ' (in die Mauer eingefügt)' : ''}.`, 'info');
       break;
     }
     case 'mauer': {
       const art = b.art === 'mauer' ? 'mauer' : 'palisade';
       const typ = GEBAEUDE[art];
-      const ax = ganz(b.ax, 0, KARTE_B * 1000), ay = ganz(b.ay, 0, KARTE_H * 1000), bx = ganz(b.bx, 0, KARTE_B * 1000), by = ganz(b.by, 0, KARTE_H * 1000);
+      let ax = ganz(b.ax, 0, KARTE_B * 1000), ay = ganz(b.ay, 0, KARTE_H * 1000), bx = ganz(b.bx, 0, KARTE_B * 1000), by = ganz(b.by, 0, KARTE_H * 1000);
+      // Laufrichtung so legen, dass die Außenseite (Zinnen, links der Zugrichtung = lokal −v) nach außen zeigt
+      if (mauerUmdrehen(z, herr, ax, ay, bx, by, !!b.tauschen)) [ax, ay, bx, by] = [bx, by, ax, ay];
       const len = abstand(ax, ay, bx, by);
       if (len < 500 || len > 40000) return;
       const n = Math.ceil(len / typ.b), w = winkelVon(bx - ax, by - ay);
@@ -349,6 +374,50 @@ export function befehlAnwenden(z, b) {
       s.art = b.art; s.breite = BREITE[b.art];
       z.version++;
       meldung(z, herr, `Straße ist jetzt ${STRASSEN_NAME[b.art]}.`, 'info');
+      break;
+    }
+    case 'strasseEcke': {
+      // Ecke runden: 0 = eckig, 1 = rund (Standard), 2 = stark rund. Endpunkte haben keine Ecke.
+      const s = z.strassen[ganz(b.id, 0, z.strassen.length - 1)];
+      if (!s || s.weg) return;
+      const n = s.punkte.length / 2, i = ganz(b.i, 0, n - 1);
+      if (i <= 0 || i >= n - 1) return;
+      if (!s.rund) s.rund = new Array(n).fill(1);
+      s.rund[i] = ganz(b.rund, 0, 2);
+      z.version++;
+      toreSetzen(z);
+      break;
+    }
+    case 'strassePunkt': {
+      // Eckpunkt verschieben (geprüft wie beim Anlegen: beide Nachbarstrecken müssen frei sein)
+      const s = z.strassen[ganz(b.id, 0, z.strassen.length - 1)];
+      if (!s || s.weg) return;
+      const p = s.punkte, n = p.length / 2, i = ganz(b.i, 0, n - 1);
+      const x = ganz(b.x, 0, KARTE_B * 1000 - 1), y = ganz(b.y, 0, KARTE_H * 1000 - 1);
+      for (const j of [i - 1, i + 1]) {
+        if (j < 0 || j >= n) continue;
+        const grund = strassePruefen(z, herr, p[2 * j], p[2 * j + 1], x, y);
+        if (grund) { meldung(z, herr, `Punkt geht hier nicht: ${grund}.`, 'warn'); return; }
+      }
+      p[2 * i] = x; p[2 * i + 1] = y;
+      for (const t of z.strassen) if (t.angeschlossen) delete t.angeschlossen;
+      z.version++;
+      toreSetzen(z);
+      break;
+    }
+    case 'wiederaufbau': {
+      // Abgebrannter Hof: Der Herr gibt Holz und Gold, die Bauern bauen sofort wieder auf (halbe Bauzeit).
+      const g = z.gebaeude[ganz(b.id, 0, z.gebaeude.length - 1)];
+      if (!g || g.besitzer !== herr || g.zustand !== 'ruine') return;
+      const fehlt = Object.keys(HOF_BRAND.hilfe).filter((w) => (h.lager[w] || 0) < HOF_BRAND.hilfe[w]);
+      if (fehlt.length) { meldung(z, herr, `Für den Wiederaufbau fehlt ${fehlt.map((w) => WARENNAME[w]).join(', ')}.`, 'warn'); return; }
+      for (const w in HOF_BRAND.hilfe) nehmen(z, herr, w, HOF_BRAND.hilfe[w], g.x, g.y);
+      const typ = GEBAEUDE[g.art];
+      g.zustand = 'bau'; g.arbeit = Math.floor(typ.arbeit * HOF_BRAND.bauAnteil / 100);
+      g.hp = Math.floor(g.hpMax / 4); g.puffer = 0; g.aufgabe = 0; g.aufgabeFeld = -1; g.pflegeFeld = -1;
+      g.wiederaufbau = true;
+      z.version++;
+      meldung(z, herr, `Die Bauern bauen ${typ.name} mit deiner Hilfe wieder auf.`, 'gut');
       break;
     }
     case 'cheat': {
