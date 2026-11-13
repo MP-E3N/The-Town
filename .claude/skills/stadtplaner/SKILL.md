@@ -41,11 +41,11 @@ aussieht, als wäre sie gewachsen *und* gut angelegt. Ziel: Meister werden. Daru
 ## 4. Wo was im Code steht
 | Datei | Was |
 |---|---|
-| `sim/stadtplaner.js` | `begradigen()` (A*-Weg → gerade Strecken + Bogen-Ecken), `planeWohngasse()` (T-Abzweig, Blocktiefe, Anschluss), `platzRandPlaetze()` (Häuser mit Front zum Markt) |
-| `sim/baumeister.js` | `findePlatz()` (Kandidaten entlang Straßen, dicht im Kern = Bürgerhaus 8 Plätze), `pruefePlatz()` (SAT-Kollision, Hang, Zone), `planeGasse()`, `planungsSchritt()` |
+| `sim/stadtplaner.js` | `begradigen()` (A*-Weg → gerade Strecken + Bogen-Ecken), `planeWohngasse()` (T-Abzweig, Blocktiefe, Anschluss), `kernFluchten()` (Baufluchten: vier Platzkanten + Straßenseiten im Kern), `kernKennzahlen()` (Platzwand, Wand an Wand) |
+| `sim/baumeister.js` | `findePlatz()` → `findeHausPlatz()`/`kernPlaetze()` (im Kern Fluchten abtasten, an Nachbar/Platz heranrücken = Bürgerhaus 8 Plätze), `pruefePlatz()` (SAT-Kollision, Hang, Zone), `planeGasse()`, `planungsSchritt()` |
 | `sim/strassen.js` | Straße hinzufügen, Tore, Anbinden neuer Gebäude |
 | `sim/zustand.js` | `marktAnlegen()` (Platz längs der Handelsstraße, Rathaus, Kirche), Startstadt |
-| `tools/stadtplan.mjs` | Messwerkzeug (Textkarte + Kennzahlen) |
+| `tools/stadtplan.mjs` | Messwerkzeug (Textkarte + Kennzahlen); 4. Argument = so viele Häuser setzen, wie der Baumeister wählt |
 
 ## 5. Arbeitsweise
 1. Problem am Bild **und** in der Textkarte zeigen (vorher). Ursache im Code finden — nicht an Symptomen drehen.

@@ -281,21 +281,25 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
     case 'mauer': {
       // Außen (oben im Bild): Brustwehr mit Zinnen. Innen (unten): Wehrgang aus hellen Steinplatten, dann die
       // niedrige Innenkante. So sieht man auf einen Blick, wo außen ist.
-      const bw = h * 0.36;
+      // Runde 10: Brustwehr schmal (≈ 1/6 der Dicke), Zinnen kleine Klötze mit Schlagschatten nach innen —
+      // so „stehen sie heraus“; vorher waren sie ein dicker, flacher Streifen.
+      const bw = h * 0.17;
       steinmauer(ctx, 0, 0, w, h, [148, 142, 132]);
-      ctx.fillStyle = '#bab3a3'; ctx.fillRect(0, bw, w, h * 0.52);
-      ctx.strokeStyle = 'rgba(110,100,88,0.55)'; ctx.lineWidth = 1;
-      for (let px = 3; px < w; px += h * 0.45) { ctx.beginPath(); ctx.moveTo(px, bw); ctx.lineTo(px, bw + h * 0.52); ctx.stroke(); }
-      ctx.beginPath(); ctx.moveTo(0, bw + h * 0.26); ctx.lineTo(w, bw + h * 0.26); ctx.stroke();
-      ctx.fillStyle = '#8f887b'; ctx.fillRect(0, h * 0.88, w, h * 0.12);
-      ctx.fillStyle = '#6f685d'; ctx.fillRect(0, 0, w, bw);
-      const zw = h * 0.42;
-      for (let px = 1; px < w; px += zw * 1.7) {
-        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(px + 1.5, 1.5, Math.min(zw, w - px), bw);
-        ctx.fillStyle = '#d2cbbb'; ctx.fillRect(px, 0, Math.min(zw, w - px), bw - 1);
-        ctx.fillStyle = '#e6e0d2'; ctx.fillRect(px, 0, Math.min(zw, w - px), 2);
+      ctx.fillStyle = '#bcb5a5'; ctx.fillRect(0, bw, w, h * 0.72 - bw);                 // Wehrgang
+      ctx.strokeStyle = 'rgba(110,100,88,0.5)'; ctx.lineWidth = 1;
+      for (let px = 3; px < w; px += h * 0.5) { ctx.beginPath(); ctx.moveTo(px, bw); ctx.lineTo(px, h * 0.72); ctx.stroke(); }
+      ctx.fillStyle = '#958e81'; ctx.fillRect(0, h * 0.72, w, h * 0.28);                // innere Mauerkante (tiefer)
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(0, bw, w, h * 0.07);             // Schatten der Brustwehr
+      ctx.fillStyle = '#7d766a'; ctx.fillRect(0, 0, w, bw);                             // Brustwehr
+      const zw = h * 0.24, zt = h * 0.24;
+      for (let px = 2; px < w - 1; px += zw * 2.1) {
+        const b = Math.min(zw, w - px);
+        ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.fillRect(px + 2, 2, b, zt + 1);         // Schlagschatten nach innen
+        ctx.fillStyle = '#ddd6c6'; ctx.fillRect(px, 0, b, zt);                           // Zinne (Merlon)
+        ctx.fillStyle = '#f2ece0'; ctx.fillRect(px, 0, b, 1.5); ctx.fillRect(px, 0, 1.5, zt); // Lichtkante
+        ctx.fillStyle = '#a49c8c'; ctx.fillRect(px + b - 1.2, 0, 1.2, zt);              // Schattenkante
       }
-      ctx.fillStyle = 'rgba(30,24,18,0.6)'; ctx.fillRect(0, 0, w, 1.5);
+      ctx.fillStyle = 'rgba(30,24,18,0.65)'; ctx.fillRect(0, 0, w, 1.2);
       break;
     }
     case 'tor':
@@ -572,7 +576,8 @@ function zeichneGebaeude(art, variante, bT, tT, winter) {
   if (winter && art !== 'platz') {
     // Schnee auf Dächern: helle Schicht über allem außer Erde (vereinfacht: überall, Ränder bleiben sichtbar)
     ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillStyle = 'rgba(240,244,250,0.55)';
+    // Mauern nur leicht verschneit — sonst verschwinden Zinnen und Wehrgang im Weiß (Runde 10)
+    ctx.fillStyle = art === 'mauer' || art === 'palisade' ? 'rgba(240,244,250,0.3)' : 'rgba(240,244,250,0.55)';
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'source-over';
   }

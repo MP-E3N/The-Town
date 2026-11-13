@@ -1,7 +1,9 @@
 /**
  * stadtplan.mjs — Werkzeug des Stadtplaners: Stadt als Textkarte + Kennzahlen.
  *
- * Aufruf:  node tools/stadtplan.mjs [seed=42] [tage=0] [bot=0|1]
+ * Aufruf:  node tools/stadtplan.mjs [seed=42] [tage=0] [bot=0|1] [häuser=0]
+ *          häuser: danach so viele Wohnhäuser setzen, wie der Baumeister sie wählt (sofort fertig, ohne Kosten) —
+ *          zeigt, wie Zeilen und Platzwand wachsen (der Bot baut bis Tag 20 kaum Häuser).
  * Zeigt:   Kartenausschnitt um den Markt (Legende unten) und Kennzahlen zur Straßen- und Bebauungsgüte.
  * ZWECK:   Gelände lesen lernen und Änderungen am Planer messbar machen (vorher/nachher vergleichen).
  */
@@ -10,17 +12,25 @@ import { erzeugeZustand } from '../sim/zustand.js';
 import { tick } from '../sim/tick.js';
 import { abgeleitet } from '../sim/abgeleitet.js';
 import { karteFuer } from '../sim/karte.js';
-import { stadtStatus } from '../sim/baumeister.js';
+import { stadtStatus, findePlatz, gebaeudeAnlegen, planeGasse } from '../sim/baumeister.js';
+import { kernKennzahlen } from '../sim/stadtplaner.js';
 import { klugerBot } from '../tests/bots.js';
 import { KARTE_B, KARTE_H } from '../data/werte.js';
+import { punktIn } from '../sim/lib.js';
 
-const seed = Number(process.argv[2] || 42), tage = Number(process.argv[3] || 0), mitBot = process.argv[4] === '1';
+const seed = Number(process.argv[2] || 42), tage = Number(process.argv[3] || 0), mitBot = process.argv[4] === '1', extra = Number(process.argv[5] || 0);
 const z = erzeugeZustand(seed);
 const bot = mitBot ? klugerBot() : null;
 for (let i = 0; i < tage * 600 && !z.ergebnis; i++) {
   const b = [];
   if (bot) bot(z, (x) => b.push({ ...x, spieler: 0 }));
   tick(z, b);
+}
+for (let i = 0; i < extra; i++) {
+  let p = findePlatz(z, 0, 'haus');
+  if (!p && planeGasse(z, 0, 1)) p = findePlatz(z, 0, 'haus');
+  if (!p) break;
+  gebaeudeAnlegen(z, 0, 'haus', p.o, { sofort: true, wohn: p.wohn });
 }
 const c = abgeleitet(z), k = karteFuer(seed);
 const m = z.gebaeude[z.herren[0].markt];
@@ -32,6 +42,7 @@ for (let y = Math.max(0, my - 18); y < Math.min(KARTE_H, my + 18); y++) {
     let ch = '.';
     if (c.strasse[i]) ch = k.wasser[i] ? 'B' : '=';
     else if (c.belegt[i]) { const g = z.gebaeude[c.belegt[i] - 1]; ch = g.art === 'haus' ? (g.wohn === 8 ? 'H' : 'h') : g.art === 'burg' ? '#' : g.art[0].toUpperCase(); }
+    else if (punktIn(m, x * 1000 + 500, y * 1000 + 500)) ch = 'P';
     else if (c.mauer[i]) ch = 'M';
     else if (c.feld[i]) ch = 'f';
     else if (k.wasser[i]) ch = '~';
@@ -78,4 +89,11 @@ let wohnland = 0, wohnFrei = 0;
 for (let i = 0; i < z.zone.length; i++) if (z.zone[i] === 1) { wohnland++; if (!c.belegt[i] && !c.strasse[i]) wohnFrei++; }
 console.log(`Tag ${Math.floor(z.tick / 600)} · Straßen ${z.strassen.length} (${laenge.toFixed(0)} Kacheln) · scharfe Knicke ${knicke} (${(knicke / Math.max(1, laenge) * 10).toFixed(2)} je 10 Kacheln) · Gassen-Sackgassen ${sackgassen} (im Wohnland ${sackWohn})`);
 console.log(`Häuser ${st.haeuser} · Wohnplätze ${st.wohnKap} · Wohnland ${wohnland} Kacheln, davon unbebaut ${wohnFrei} · Dichte ${(st.wohnKap / Math.max(1, wohnland - wohnFrei)).toFixed(2)} Plätze je bebauter Kachel`);
+// Hausdichte: nur Wohnhäuser (die Dichte oben zählt auch Kaserne, Kirche, Straßen im Wohnland mit)
+let hausKacheln = 0, hausPlaetze = 0;
+for (let i = 0; i < z.zone.length; i++) if (c.belegt[i] && z.gebaeude[c.belegt[i] - 1].art === 'haus') hausKacheln++;
+for (const g of z.gebaeude) if (g.art === 'haus' && g.zustand !== 'weg') hausPlaetze += g.wohn || 5;
+console.log(`Wohnhäuser: ${hausPlaetze} Plätze auf ${hausKacheln} Kacheln (${(hausPlaetze / Math.max(1, hausKacheln)).toFixed(1)} Plätze je Hauskachel)`);
+const kk = kernKennzahlen(z, 0), rand = Math.max(1, kk.punkte - kk.einmuendung);
+console.log(`Platzwand: Häuser ${Math.round(kk.haus * 100 / rand)} % · alle Gebäude ${Math.round(kk.gebaeude * 100 / rand)} % des Platzrands (ohne ${kk.einmuendung} von ${kk.punkte} Punkten an Einmündungen) · Kern-Zeilen: ${kk.wand} von ${kk.seiten} Hausseiten Wand an Wand, ${kk.ende} Zeilenenden an Straße/Platz, ${kk.luecke} Lücken 0,35–1,5 Kacheln`);
 console.log('Baumeister:', z.herren[0].planLog.slice(-6).join(' | '));

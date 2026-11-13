@@ -16,7 +16,7 @@ import { abgeleitet, objekteNahe } from './abgeleitet.js';
 import { findePfad } from './pfad.js';
 import { strasseHinzufuegen, glaetten, anbinden } from './strassen.js';
 import { vorratReicht } from './wirtschaft.js';
-import { begradigen, planeWohngasse, platzRandPlaetze, gassenEndeAnschliessen } from './stadtplaner.js';
+import { begradigen, planeWohngasse, kernFluchten, gassenEndeAnschliessen } from './stadtplaner.js';
 import { geben, nehmen, leer } from './lager.js';
 import { ecken, lokal, ueberlappt, abstandStrecke, abstand, kachel, winkelVon, wnorm, zufall, COS, SIN, meldung, flaecheVon, radiusVon, punktIn } from './lib.js';
 
@@ -91,6 +91,7 @@ export function pruefePlatz(z, herr, o, opt = {}) {
     // Häuser zählen mit ihrem Garten dahinter (sonst lagen Gärten unter Nachbarhäusern)
     if (e.typ === 'g' && obj.art === 'haus' && obj.zustand !== 'weg') obj = grundstueck(obj, obj.wohn);
     if (e.typ === 'g' && obj.zustand === 'weg') continue;
+    if (e.typ === 'f' && opt.ohneFelder && opt.ohneFelder.has(e.id)) continue; // Nachwachsen: eigene Felder sind kein Hindernis
     if (opt.mauer && e.typ === 'g' && (GEBAEUDE[obj.art].mauer || obj.art === 'turm')) continue;
     if (opt.mauerOk && e.typ === 'g' && GEBAEUDE[obj.art].mauer) continue;
     if (ueberlappt(o, obj, opt.mauer ? 0 : rand)) return 'belegt';
@@ -152,7 +153,10 @@ function felderPlanen(z, herr, o) {
   const fb = 2200, ft = 3000, out = [];
   // WARUM mit Lücken: Die Felder wachsen reihum aufeinander zu und füllen die Lücken (dicht gesetzte blockieren sich).
   const r0 = Math.floor(o.t / 2) + 300 + ft / 2, r1 = r0 + 4600, r2 = r1 + 4600;
-  const plaetze = [[-2300, r0], [2300, r0], [-2300, r1], [2300, r1], [0, r0], [0, r1], [-2300, r2], [2300, r2]];
+  // Runde 11: mehr mögliche Stellen (auch weiter seitlich, auch erst hinter einem Hindernis) — vorher scheiterten
+  // viele Höfe, weil genau die 8 festen Stellen hinter dem Gebäude belegt oder außerhalb der Zone lagen.
+  const plaetze = [[-2300, r0], [2300, r0], [-2300, r1], [2300, r1], [0, r0], [0, r1], [-2300, r2], [2300, r2],
+    [-4600, r0], [4600, r0], [-4600, r1], [4600, r1], [0, r2], [-4600, r2], [4600, r2], [-1200, r0 + 2300], [1200, r0 + 2300]];
   for (const [lu, lv] of plaetze) {
     if (out.length >= 4) break;
     const p = lokal(o, lu, lv);
@@ -164,18 +168,24 @@ function felderPlanen(z, herr, o) {
 }
 
 function weidePlanen(z, herr, o) {
-  for (const lu of [0, -1800, 1800, -3600, 3600]) {
-    const p = lokal(o, lu, Math.floor(o.t / 2) + 350 + 1700);
+  for (const [lu, lv] of [[0, 0], [-1800, 0], [1800, 0], [-3600, 0], [3600, 0], [0, 2300], [-1800, 2300], [1800, 2300]]) {
+    const p = lokal(o, lu, Math.floor(o.t / 2) + 350 + 1700 + lv);
     const f = { x: p.x, y: p.y, b: 3400, t: 3400, w: o.w };
     if (!pruefePlatz(z, herr, f, { zone: 3, zoneMin: 6, steilMax: 90, rand: 120, strRand: 60, extra: [o] })) return [f];
   }
   return [];
 }
 
+/** Höfe dürfen am leichten Hang stehen wie Wohnhäuser (vorher 45: Höfe am Hang zum Fluss scheiterten). */
+const HOF_STEIL = 60;
 const HAUS_B = [1000, 1150, 1300], HAUS_T = [1350, 1600, 1850];
 /** Bürgerhäuser nahe dem Markt: größer, mehr Bewohner. */
 const STADTHAUS_B = [1150, 1300, 1450], STADTHAUS_T = [1800, 2000, 2200];
 const STADTKERN = 11000;
+/** Schmales Bürgerhaus: letzte Ausweichgröße im Kern (Hang, enge Stelle), siehe kernPlaetze. */
+const LUECKE_B = 1000;
+/** Schmalhaus: schließt eine Zahnlücke, in die kein anderes Haus passt (nur dort, siehe kernPlaetze). */
+const SCHMAL_B = 700;
 
 /** Gartentiefe hinter einem Haus (Bürgerhaus: kleiner Hinterhof). Gleiche Werte wie render/szene.js zeichneGaerten. */
 export function gartenTiefe(wohn) { return wohn === 8 ? 700 : 1000; }
@@ -209,42 +219,133 @@ function zeilenPlaetze(z, H, sd, b, t) {
   return out;
 }
 
+/**
+ * Stadtkern (Runde 10, Blockrand): Bauplätze entlang der Baufluchten (kernFluchten: vier Platzkanten + beide
+ * Straßenseiten) dicht abtasten (alle 0,2/0,25 Kacheln) und nur die Stellen anbieten, an denen eine Zeile anfängt
+ * oder weitergeht — die Nachbarprobe ist belegt (Nachbarhaus, Platz, einmündende Straße, Rathaus …) oder es ist das
+ * Ende einer Platzkante (Ecke). Dort rückt das Haus in 0,05er-Schritten bis an das Hindernis heran.
+ * WARUM: Vorher wurden feste Plätze alle ~1,5 Kacheln probiert, und eine Zeile wuchs vom ersten (oft weit entfernten)
+ * Haus weiter nach außen; zwischen Platz und Häusern blieb ein leerer Grasstreifen (Nutzerbild Runde 10). Jetzt
+ * fängt jede Zeile am Platz oder an der Einmündung an und wächst ohne Lücke weiter.
+ * groessen = [[b, t], …] in Vorzugsreihenfolge: Passt das gewürfelte Haus nicht (Hang, schmale Lücke), wird an
+ * derselben Stelle ein flacheres/schmaleres probiert — sonst blieben am Hang und zwischen Nachbarn Zahnlücken.
+ * Gibt [{ o, platz, kontakt }] zurück; Plätze ohne Kontakt nur jede 4. Probe (Notnagel, schlechter bewertet).
+ */
+function kernPlaetze(z, herr, markt, groessen, hopt) {
+  const out = [];
+  const platz = z.gebaeude[z.herren[herr].markt];
+  let bmin = Infinity;
+  for (const [b] of groessen) bmin = Math.min(bmin, b);
+  for (const f of kernFluchten(z, platz, markt, STADTKERN)) {
+    // An der Platzkante darf ein Eckhaus 0,3 Kacheln über die Ecke hinausragen (schließt die Ecke)
+    const lo = f.platz ? Math.trunc(bmin / 2) - 300 : 0, hi = f.platz ? f.laenge - Math.trunc(bmin / 2) + 300 : f.laenge;
+    const schritt = f.platz ? 200 : 250;
+    // Haus der Größe b×t an Stelle d (null = außerhalb des Kerns, false = passt nicht)
+    const haus = (d, b, t) => {
+      if (f.platz && (d - Math.trunc(b / 2) < -300 || d + Math.trunc(b / 2) > f.laenge + 300)) return false;
+      const q = f.punkt(d);
+      if (!q) return null;
+      const off = f.off + Math.trunc(t / 2);
+      // Front (−v) zur Linie: +v = Normale → w = Normale − 90; im Kern ohne Zufallsdrehung, sonst klaffen Keile
+      const o = { x: q.x + Math.trunc(COS[q.n] * off / 1024), y: q.y + Math.trunc(SIN[q.n] * off / 1024), b, t, w: wnorm(q.n - 90) };
+      return pruefePlatz(z, herr, grundstueck(o, 8), hopt) ? false : o;
+    };
+    const passend = (d) => {
+      let r = false;
+      for (const [b, t] of groessen) { r = haus(d, b, t); if (r !== false) return r; }
+      return r;
+    };
+    const ds = [];
+    for (let d = lo; d <= hi; d += schritt) ds.push(d);
+    const os = ds.map(passend);
+    // Nachbarprobe belegt? Außerhalb des Kerns (null) zählt nicht; das Ende einer Platzkante ist eine Ecke (zählt).
+    const belegt = (i) => (i < 0 || i >= ds.length ? f.platz : os[i] === false);
+    for (let i = 0; i < ds.length; i++) {
+      if (!os[i]) continue;
+      const li = belegt(i - 1), re = belegt(i + 1);
+      if (!li && !re) { if (i % 4 === 0) out.push({ o: os[i], platz: f.platz, kontakt: false }); continue; }
+      // heranrücken: bis zu 3 × 0,05 Kacheln zum Hindernis hin, in derselben Größe (nicht über die Ecke hinaus)
+      let o = os[i];
+      const r = li ? -1 : 1;
+      if ((r < 0 && i > 0) || (r > 0 && i < ds.length - 1)) {
+        for (let s = 1; s <= 3; s++) { const q = haus(ds[i] + r * 50 * s, o.b, o.t); if (!q) break; o = q; }
+      }
+      out.push({ o, platz: f.platz, kontakt: true });
+    }
+    // Zahnlücke schließen: Wo keine Größe der Liste passt, aber ein Schmalhaus (SCHMAL_B), und gleich links wie rechts
+    // ein Hindernis kommt (die Lücke ist schmaler als ein normales Haus), steht ein schmales Giebelhaus.
+    // WARUM nur dort: Schmalhäuser sind der Lückenfüller gewachsener Zeilen, kein Normalfall.
+    for (let i = 0; i < ds.length; i++) {
+      if (os[i] !== false) continue;
+      const o = haus(ds[i], SCHMAL_B, STADTHAUS_T[0]);
+      if (!o || haus(ds[i] - 300, SCHMAL_B, STADTHAUS_T[0]) !== false || haus(ds[i] + 300, SCHMAL_B, STADTHAUS_T[0]) !== false) continue;
+      out.push({ o, platz: f.platz, kontakt: true });
+    }
+  }
+  return out;
+}
+
+/**
+ * Bauplatz für ein Wohnhaus: im Stadtkern Bürgerhäuser (8 Plätze) Wand an Wand entlang der Baufluchten
+ * (kernPlaetze, zeilenPlaetze), draußen Wohnhäuser (5 Plätze) mit Abstand an den Straßen.
+ * Bewertung (kleiner = besser): Abstand zum Markt, Platzfront −6000, Zeilenanschluss −3000, Kernplatz ohne Anschluss
+ * +4000. WARUM so: Erst schließt sich die Platzwand, dann wachsen die Zeilen von innen nach außen; ein einzelnes Haus
+ * mitten in der Flucht (das später Lücken erzwingt) kommt nur, wenn sonst nichts geht.
+ */
+function findeHausPlatz(z, herr, markt) {
+  const zone = 1;
+  const kernOpt = { zone, zoneMin: 7, steilMax: 60, rand: -10, strRand: 60 }; // rand −10 = Berühren erlaubt
+  const aussenOpt = { zone, zoneMin: 7, steilMax: 60, rand: 60, strRand: 60 };
+  // Gewürfelte Größe zuerst; Ausweichgrößen flacher (Hang) und schmaler (Lücke) — siehe kernPlaetze
+  const kb = STADTHAUS_B[zufall(z, 3)], kt = STADTHAUS_T[zufall(z, 3)];
+  const groessen = [[kb, kt]];
+  for (const g of [[kb, STADTHAUS_T[0]], [STADTHAUS_B[0], STADTHAUS_T[0]], [LUECKE_B, STADTHAUS_T[0]]]) {
+    if (!groessen.some((x) => x[0] === g[0] && x[1] === g[1])) groessen.push(g);
+  }
+  const kand = kernPlaetze(z, herr, markt, groessen, kernOpt);
+  // Zeile fortsetzen: genau an der vorderen Ecke des Nachbarn, auch in der Kurve (leicht verdreht)
+  for (const H of z.gebaeude) {
+    if (H.art !== 'haus' || H.zustand === 'weg' || H.besitzer !== herr || abstand(H.x, H.y, markt.x, markt.y) >= STADTKERN) continue;
+    for (const sd of [-1, 1]) {
+      let gefunden = false;
+      for (const [b, t] of groessen) {
+        for (const q of zeilenPlaetze(z, H, sd, b, t)) {
+          if (abstand(q.x, q.y, markt.x, markt.y) >= STADTKERN) break;
+          if (!pruefePlatz(z, herr, grundstueck(q, 8), kernOpt)) { kand.push({ o: q, platz: false, kontakt: true }); gefunden = true; break; }
+        }
+        if (gefunden) break;
+      }
+    }
+  }
+  // Draußen: wie bisher an den Straßen, mit Abstand und leichter Drehung
+  for (const p of strassenPlaetze(z, 1450, 2200, zone, 0, true)) {
+    if (abstand(p.x, p.y, markt.x, markt.y) < STADTKERN) continue;
+    const b = HAUS_B[zufall(z, 3)], t = HAUS_T[zufall(z, 3)];
+    const o = { x: p.x, y: p.y, b, t, w: wnorm(p.w + zufall(z, 5) - 2) };
+    // WARUM nachrücken: Platz wurde für die größte Hausgröße gesucht; kleinere rücken an die Straße.
+    if (t < 2200) { const q = lokal(o, 0, -Math.floor((2200 - t) / 2)); o.x = q.x; o.y = q.y; }
+    if (!pruefePlatz(z, herr, grundstueck(o, 5), aussenOpt)) kand.push({ o, aussen: true });
+  }
+  let best = null, bw = Infinity;
+  for (const q of kand) {
+    const wert = abstand(q.o.x, q.o.y, markt.x, markt.y) + zufall(z, 800) - (q.platz ? 6000 : 0) - (q.kontakt ? 3000 : 0) + (!q.aussen && !q.kontakt ? 4000 : 0);
+    if (wert < bw) { bw = wert; best = { o: q.o, felder: [], wohn: q.aussen ? 5 : 8 }; }
+  }
+  return best;
+}
+
 /** Bester Platz für eine Gebäudeart in ihrer Zone, oder null. */
 export function findePlatz(z, herr, art, nahe = null) {
   const typ = GEBAEUDE[art], k = karteFuer(z.seed);
   const zone = typ.zone || 0;
   const markt = nahe || z.gebaeude[z.herren[herr].markt] || z.gebaeude[z.herren[herr].burg];
+  if (art === 'haus') return findeHausPlatz(z, herr, markt);
   let best = null, bestWert = Infinity;
-  const b0 = art === 'haus' ? 1450 : typ.b, t0 = art === 'haus' ? 2200 : typ.t;
-  const plaetze = strassenPlaetze(z, b0, t0, zone, (art === 'hof' || art === 'viehhof') ? 2 : typ.braucht ? 2 : 0, art === 'haus');
-  const platz = z.gebaeude[z.herren[herr].markt];
-  if (art === 'haus' && platz) for (const p of platzRandPlaetze(z, platz, 1300, 2000)) plaetze.unshift(p);
-  if (art === 'haus') {
-    for (const H of z.gebaeude) {
-      if (H.art !== 'haus' || H.zustand === 'weg' || H.besitzer !== herr || abstand(H.x, H.y, markt.x, markt.y) >= STADTKERN) continue;
-      for (const sd of [-1, 1]) plaetze.unshift({ x: H.x, y: H.y, w: H.w, zeile: { H, sd } });
-    }
-  }
+  const b0 = typ.b, t0 = typ.t;
+  const plaetze = strassenPlaetze(z, b0, t0, zone, (art === 'hof' || art === 'viehhof') ? 2 : typ.braucht ? 2 : 0, false);
   for (const p of plaetze) {
-    let b = typ.b, t = typ.t, wohn = 0;
-    if (art === 'haus') {
-      const kern = abstand(p.x, p.y, markt.x, markt.y) < STADTKERN;
-      const i = zufall(z, 3), j = zufall(z, 3);
-      b = kern ? STADTHAUS_B[i] : HAUS_B[i]; t = kern ? STADTHAUS_T[j] : HAUS_T[j];
-      wohn = kern ? 8 : 5;
-    }
-    let o = { x: p.x, y: p.y, b, t, w: wnorm(p.w + (art === 'haus' ? zufall(z, 5) - 2 : zufall(z, 9) - 4)) };
-    // WARUM nachrücken: Platz wurde für die größte Hausgröße gesucht; kleinere rücken an die Straße.
-    if (t < t0 && !p.zeile) { const q = lokal(o, 0, -Math.floor((t0 - t) / 2)); o.x = q.x; o.y = q.y; }
-    if (art === 'haus') {
-      // Im Kern Wand an Wand (rand −10 = Berühren erlaubt), draußen mit Abstand; geprüft wird das Grundstück mit Garten
-      const kern = wohn === 8, hopt = { zone, zoneMin: 7, steilMax: 60, rand: kern ? -10 : 60, strRand: 60 };
-      const kand = p.zeile ? zeilenPlaetze(z, p.zeile.H, p.zeile.sd, b, t) : [o];
-      o = null;
-      for (const q of kand) if (!pruefePlatz(z, herr, grundstueck(q, wohn), hopt)) { o = q; break; }
-      if (!o) continue;
-    }
-    const grund = art === 'haus' ? null : pruefePlatz(z, herr, o, { zone, zoneMin: art === 'fischer' ? 5 : (art === 'hof' || art === 'viehhof' || typ.braucht) ? 2 : 7, braucht: typ.braucht, amWasser: typ.amWasser, steilMax: art === 'fischer' ? 80 : typ.braucht ? 130 : art === 'haus' ? 60 : 45, felsOk: !!typ.braucht, rand: art === 'haus' ? 60 : 250, strRand: art === 'haus' ? 60 : 120 });
+    const o = { x: p.x, y: p.y, b: b0, t: t0, w: wnorm(p.w + zufall(z, 9) - 4) };
+    const grund = pruefePlatz(z, herr, o, { zone, zoneMin: art === 'fischer' ? 5 : (art === 'hof' || art === 'viehhof' || typ.braucht) ? 2 : 7, braucht: typ.braucht, amWasser: typ.amWasser, steilMax: art === 'fischer' ? 80 : typ.braucht ? 130 : (art === 'hof' || art === 'viehhof') ? HOF_STEIL : 45, felsOk: !!typ.braucht, rand: 250, strRand: 120 });
     if (grund) continue;
     let felder = [], wert = abstand(o.x, o.y, markt.x, markt.y);
     if (art === 'hof') {
@@ -263,10 +364,8 @@ export function findePlatz(z, herr, art, nahe = null) {
         if (x >= 0 && y >= 0 && x < KARTE_B && y < KARTE_H) w += z.wald[y * KARTE_B + x];
       }
       wert = wert / 3 - w * 8;
-    } else if (art === 'haus') {
-      wert += zufall(z, 800) - (p.platz ? 6000 : 0) - (p.zeile ? 7000 : 0);
     }
-    if (wert < bestWert) { bestWert = wert; best = { o, felder, wohn }; }
+    if (wert < bestWert) { bestWert = wert; best = { o, felder, wohn: 0 }; }
   }
   return best;
 }
@@ -306,7 +405,7 @@ export function gebaeudeAnlegen(z, herr, art, o, opt = {}) {
  * WARUM im Raster des Hofs: Alle Felder eines Hofs liegen parallel; nach vorn (Straße, Hof-Front) wachsen sie nicht.
  * Rechnet in lokalen Koordinaten des Hofs (u quer, v von der Straße weg), ganzzahlig.
  */
-function felderWachsen(z, herr, hof, felder, weide) {
+function felderWachsen(z, herr, hof, felder, weide, ohne = null, breiter = 0) {
   const zone = weide ? 3 : 2;
   const maxFeld = weide ? WEIDE.maxFeld : FELD.maxFeld, maxSumme = weide ? WEIDE.maxFeld : FELD.maxHof;
   const c = COS[hof.w], s = SIN[hof.w];
@@ -323,6 +422,9 @@ function felderWachsen(z, herr, hof, felder, weide) {
   // So liegen die Höfe an EINEM Weg aufgereiht, jeder mit seinem Flurstreifen dahinter.
   let seitlich = weide ? 5000 : 4600;
   for (const q of r) seitlich = Math.max(seitlich, -q.u0, q.u1);
+  // Nachwachsen: Der Streifen darf breiter werden (sonst bliebe Land neben dem Hof für immer brach, wenn dort kein
+  // weiterer Hof mehr entsteht).
+  seitlich += breiter;
   let summe = 0;
   for (const q of r) summe += flaeche(q);
   // Grob (0,4 Kacheln), dann fein (0,1): sonst blieben zwischen Nachbarfeldern Spalten bis zu einer halben Kachel.
@@ -339,13 +441,13 @@ function felderWachsen(z, herr, hof, felder, weide) {
         if (neu > maxFeld || summe - alt + neu > maxSumme) continue;
         const extra = [hof];
         for (let j = 0; j < r.length; j++) if (j !== i) extra.push(rechteck(r[j]));
-        if (!feldFrei(z, herr, rechteck(q), zone, extra)) continue;
+        if (!feldFrei(z, herr, rechteck(q), zone, extra, ohne)) continue;
         summe += neu - alt; r[i] = q; gewachsen = true;
       }
     }
     if (!gewachsen) break;
   }
-  return zwickelFuellen(z, herr, hof, r, zone, seitlich, vorn, maxFeld, maxSumme, summe);
+  return zwickelFuellen(z, herr, hof, r, zone, seitlich, vorn, maxFeld, maxSumme, summe, ohne);
 }
 
 /**
@@ -356,7 +458,7 @@ function felderWachsen(z, herr, hof, felder, weide) {
  * e = [A nach −u, B nach +u, C nach +u, D nach −u, C nach +v, D nach +v] in Milli-Kacheln.
  * WARUM nur konvexe Vierecke: Kollision (Trennachsen-Test) und Darstellung bleiben einfach und exakt.
  */
-function zwickelFuellen(z, herr, hof, r, zone, seitlich, vorn, maxFeld, maxSumme, summe) {
+function zwickelFuellen(z, herr, hof, r, zone, seitlich, vorn, maxFeld, maxSumme, summe, ohne = null) {
   const ZW_MAX = 6000;
   const lokPoly = (q, e) => [q.u0 - e[0], q.v0, q.u1 + e[1], q.v0, q.u1 + e[2], q.v1 + e[4], q.u0 - e[3], q.v1 + e[5]];
   const weltFeld = (q, e) => {
@@ -394,7 +496,7 @@ function zwickelFuellen(z, herr, hof, r, zone, seitlich, vorn, maxFeld, maxSumme
         if (neu > maxFeld || summe - alt + neu > maxSumme) continue;
         const extra = [hof];
         for (let j = 0; j < r.length; j++) if (j !== i) extra.push(weltFeld(r[j], ext[j]));
-        if (!feldFrei(z, herr, kand, zone, extra)) continue;
+        if (!feldFrei(z, herr, kand, zone, extra, ohne)) continue;
         summe += neu - alt; ext[i] = e; gewachsen = true;
       }
     }
@@ -404,8 +506,8 @@ function zwickelFuellen(z, herr, hof, r, zone, seitlich, vorn, maxFeld, maxSumme
 }
 
 /** Darf hier ein (gewachsenes) Feld liegen? Wie pruefePlatz, aber das Innere wird dicht abgetastet. */
-function feldFrei(z, herr, f, zone, extra) {
-  if (pruefePlatz(z, herr, f, { steilMax: 1e9, felsOk: true, rand: 120, strRand: 60, extra })) return false;
+function feldFrei(z, herr, f, zone, extra, ohne = null) {
+  if (pruefePlatz(z, herr, f, { steilMax: 1e9, felsOk: true, rand: 120, strRand: 60, extra, ohneFelder: ohne })) return false;
   const k = karteFuer(z.seed);
   let n = 0, drin = 0;
   if (f.poly) {
@@ -433,7 +535,7 @@ function feldFrei(z, herr, f, zone, extra) {
       const p = lokal(f, -hb + Math.trunc(2 * hb * i / nu), -ht + Math.trunc(2 * ht * j / nv));
       if (p.x < 0 || p.y < 0 || p.x >= KARTE_B * 1000 || p.y >= KARTE_H * 1000) return false;
       const t = kachel(p.x, p.y);
-      if (k.wasser[t] || k.fels[t] > 55 || k.erz[t] > 55 || k.steil[t] > 70) return false;
+      if (k.wasser[t] || k.fels[t] > 55 || k.erz[t] > 55 || k.steil[t] > FELD.steilMax) return false;
       n++;
       if (z.zone[t] === zone) drin++;
     }
@@ -619,8 +721,8 @@ export function stadtStatus(z, herr) {
       if (typ.arbeiter) st.arbeiterBedarf += typ.arbeiter;
       if (typ.plaetze) st.plaetze += typ.plaetze;
       if (g.art === 'hof') { let p = 0; for (const id of g.felder) if (!z.felder[id].weg) p += feldProzent(z.felder[id]); st.nahrungProTag += Math.floor(p * FELD.ertrag * 11 / 1000 / 20); }
-      if (g.art === 'viehhof') st.nahrungProTag += Math.floor(2 * 600 / viehTakt(z, g));
-      if (g.art === 'fischer') st.nahrungProTag += Math.floor(600 / typ.ticksProEinheit);
+      if (g.art === 'viehhof') st.nahrungProTag += Math.floor(typ.arbeiter * 600 / viehTakt(z, g));
+      if (g.art === 'fischer') st.nahrungProTag += Math.floor(typ.arbeiter * 600 / typ.ticksProEinheit);
       if (g.art === 'turm') st.tuerme++;
       if (typ.mauer) st.mauern++;
     } else {
@@ -688,13 +790,140 @@ function versuche(z, herr, art, nahe = null) {
     if (planeGasse(z, herr, typ.zone)) { log(z, herr, `neue ${typ.zone === 1 ? 'Gasse' : 'Feldweg-Achse'} in ${ZONEN[typ.zone].name}`); p = findePlatz(z, herr, art); if (!p) (z.wegSperre || (z.wegSperre = {}))[art] = { v: z.zonenVersion, bis: z.tick + 3 * 600 }; }
   }
   if (!p) {
-    meldung(z, herr, `Baumeister: Kein Platz mehr für ${typ.name} im ${ZONEN[typ.zone || 1].name} – schreib mehr Land aus.`, 'warn', 'platz' + art, 4000);
+    // Runde 11: Bei Höfen ehrlich sagen, woran es liegt — oft ist Land frei, aber kein Hofplatz an einem Weg
+    if (art === 'hof' || art === 'viehhof') meldung(z, herr, `Baumeister: Kein Platz für einen neuen ${typ.name} an einem Weg. Freies ${ZONEN[typ.zone].name} nutzen die Nachbarhöfe nach und nach; für mehr Höfe größere zusammenhängende Flächen ausschreiben.`, 'warn', 'platz' + art, 4000);
+    else meldung(z, herr, `Baumeister: Kein Platz mehr für ${typ.name} im ${ZONEN[typ.zone || 1].name} – schreib mehr Land aus.`, 'warn', 'platz' + art, 4000);
     return false;
   }
   if (!notbau) bezahlen(z, herr, art, p.o.x, p.o.y);
   gebaeudeAnlegen(z, herr, art, p.o, { felder: p.felder, wohn: p.wohn });
   log(z, herr, `plant ${typ.name}`);
   return true;
+}
+
+/**
+ * Flur-Auswertung (nur lesend, für Anzeige und Messung): ordnet jede Kachel Acker- (2) und Weideland (3) ein.
+ * Klassen: 1 Feld/Weide · 2 frei = Reserve für einen neuen Hof · 3 Rest (zusammenhängend < FELD.restKacheln) ·
+ * 4 zu steil (> FELD.steilMax, z. B. Uferböschung) · 5 Fels/Erz · 6 Wege, Höfe, andere Bauten ·
+ * 7 frei, aber ohne Weg und ohne Nachbarhof (erst ein neuer Feldweg erschließt es).
+ * WARUM dieselben Grenzen wie feldFrei: Die Anzeige darf nicht „wird noch genutzt“ sagen, wo der Baumeister nie baut.
+ */
+export const FLUR_KLASSEN = ['', 'Felder', 'frei (Reserve)', 'Rest (zu klein)', 'zu steil', 'Fels', 'Wege/Bauten', 'frei, ohne Weg'];
+export function flurAuswertung(z) {
+  const k = karteFuer(z.seed), c = abgeleitet(z), N = KARTE_B * KARTE_H;
+  const klasse = new Uint8Array(N);
+  for (let t = 0; t < N; t++) {
+    const zo = z.zone[t];
+    if ((zo !== 2 && zo !== 3) || k.wasser[t]) continue;
+    if (c.feld[t]) klasse[t] = 1;
+    else if (c.belegt[t] || c.strasse[t]) klasse[t] = 6;
+    else if (k.fels[t] > 55 || k.erz[t] > 55) klasse[t] = 5;
+    else if (k.steil[t] > FELD.steilMax) klasse[t] = 4;
+    else klasse[t] = 2;
+  }
+  // Kleine freie Inseln (je Zone zusammenhängend) sind Rest: dort passt kein Hof mit Feldern mehr hin.
+  const gesehen = new Uint8Array(N);
+  for (let t = 0; t < N; t++) {
+    if (klasse[t] !== 2 || gesehen[t]) continue;
+    const zo = z.zone[t], teil = [t]; gesehen[t] = 1;
+    for (let i = 0; i < teil.length; i++) {
+      const q = teil[i], x = q % KARTE_B, y = (q - x) / KARTE_B;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= KARTE_B || ny >= KARTE_H) continue;
+        const n = ny * KARTE_B + nx;
+        if (!gesehen[n] && klasse[n] === 2 && z.zone[n] === zo) { gesehen[n] = 1; teil.push(n); }
+      }
+    }
+    if (teil.length < FELD.restKacheln) { for (const q of teil) klasse[q] = 3; continue; }
+    // Erreichbar? Ein Weg in der Nähe (neuer Hof) oder ein Feld daneben (Nachwachsen)
+    let erreichbar = false;
+    for (const q of teil) {
+      if (c.strDist[q] <= 4) { erreichbar = true; break; }
+      const x = q % KARTE_B, y = (q - x) / KARTE_B;
+      for (let dy = -2; dy <= 2 && !erreichbar; dy++) for (let dx = -2; dx <= 2; dx++) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < KARTE_B && ny < KARTE_H && klasse[ny * KARTE_B + nx] === 1) { erreichbar = true; break; } }
+      if (erreichbar) break;
+    }
+    if (!erreichbar) for (const q of teil) klasse[q] = 7;
+  }
+  const zaehl = () => [0, 0, 0, 0, 0, 0, 0, 0];
+  const acker = zaehl(), weide = zaehl();
+  for (let t = 0; t < N; t++) if (klasse[t]) (z.zone[t] === 2 ? acker : weide)[klasse[t]]++;
+  return { klasse, acker, weide, version: z.version, zonenVersion: z.zonenVersion };
+}
+
+/**
+ * Warum entsteht gerade kein neuer Hof? Gleiche Bedingungen wie planungsSchritt (Nahrung knapp ODER genug freie Hände).
+ * Liefert einen kurzen Satz für die Anzeige.
+ */
+export function hofAusblick(z, herr) {
+  const h = z.herren[herr], st = stadtStatus(z, herr);
+  const frei = h.arbeitslos - st.arbeiterReserviert;
+  const knapp = st.nahrungProTag < st.verbrauch + 4 || !vorratReicht(z, herr, st, 10);
+  const bau = (st.anzahlBau.hof || 0) + (st.anzahlBau.viehhof || 0);
+  if (bau) return `${bau} Hof im Bau.`;
+  if (frei < GEBAEUDE.viehhof.arbeiter) return `Neuer Hof erst, wenn mehr Leute frei sind (jetzt ${Math.max(0, frei)} ohne Arbeit, ein Hof braucht ${GEBAEUDE.hof.arbeiter}).`;
+  if (knapp || frei >= 4) return 'Der Baumeister sucht einen Platz für einen neuen Hof.';
+  return 'Nahrung reicht — freies Land bleibt Reserve, bis mehr gebraucht wird.';
+}
+
+/**
+ * Felder bestehender Höfe wachsen nach (Runde 11): einmal je Planungstag ein Hof, der am längsten wartet. Seine Felder
+ * wachsen erneut (Rechteck, dann Zwickel) in freies Acker-/Weideland — bis Straße, Nachbar, Zonenrand, Hang oder
+ * FELD.maxHof. WARUM: Vorher wuchsen Felder nur beim Anlegen des Hofs; später ausgeschriebenes oder frei gewordenes
+ * Land daneben blieb für immer brach (Nutzerbild: Hang zwischen Feldweg und Fluss). Übernommen wird das Ergebnis nur,
+ * wenn die Gesamtfläche größer wird; jedes Feld behält seine ID, Saat, Stand und Pflege.
+ */
+function felderNachwachsen(z, herr) {
+  let hof = null;
+  for (const g of z.gebaeude) {
+    if (g.besitzer !== herr || g.zustand !== 'fertig' || (g.art !== 'hof' && g.art !== 'viehhof')) continue;
+    if (!hof || (g.nachgewachsen || 0) < (hof.nachgewachsen || 0)) hof = g;
+  }
+  if (!hof) return false;
+  hof.nachgewachsen = z.tick;
+  const felder = hof.felder.map((id) => z.felder[id]).filter((f) => !f.weg);
+  if (!felder.length) return false;
+  const alt = felder.reduce((a, f) => a + flaecheVon(f), 0);
+  const kern = felder.map((f) => ({ x: f.x, y: f.y, b: f.b, t: f.t, w: f.w }));
+  const neu = felderWachsen(z, herr, hof, kern, hof.art === 'viehhof', new Set(felder.map((f) => f.id)), FELD.nachwachsenBreiter);
+  const summe = neu.reduce((a, f) => a + flaecheVon(f), 0);
+  if (summe <= alt + 1000000) return false; // weniger als 1 Kachel² mehr: lohnt nicht
+  neu.forEach((n, i) => {
+    const f = felder[i];
+    f.x = n.x; f.y = n.y; f.b = n.b; f.t = n.t; f.w = n.w;
+    if (n.poly) f.poly = n.poly; else delete f.poly;
+    roden(z, herr, f, 0);
+  });
+  z.version++;
+  log(z, herr, `${GEBAEUDE[hof.art].name}: Felder +${Math.round((summe - alt) / 1e6)} Kacheln²`);
+  return true;
+}
+
+/**
+ * Diagnose (nur lesend): Warum findet ein neuer Hof keinen Platz? Zählt für jeden Kandidaten an einer Straße den
+ * ersten Ablehnungsgrund (Gebäude: pruefePlatz-Grund; sonst „zu wenig Startfelder“). Für Messung und Anzeige.
+ */
+export function hofPlatzDiagnose(z, herr, art = 'hof') {
+  const typ = GEBAEUDE[art], zone = typ.zone, gruende = {};
+  const plaetze = strassenPlaetze(z, typ.b, typ.t, zone, 2, false);
+  let ok = 0;
+  for (const p of plaetze) {
+    const o = { x: p.x, y: p.y, b: typ.b, t: typ.t, w: p.w };
+    let g = pruefePlatz(z, herr, o, { zone, zoneMin: 2, steilMax: HOF_STEIL, rand: 250, strRand: 120 });
+    if (!g) {
+      const f = art === 'hof' ? felderPlanen(z, herr, o) : weidePlanen(z, herr, o);
+      if (f.length < (art === 'hof' ? 2 : 1)) {
+        g = 'Startfelder passen nicht';
+        // Grund des nächstgelegenen Startfelds mitzählen (welches Hindernis?)
+        const q = lokal(o, 0, Math.floor(o.t / 2) + 1800);
+        const fg = pruefePlatz(z, herr, { x: q.x, y: q.y, b: 2200, t: 3000, w: o.w }, { zone: art === 'hof' ? 2 : 3, zoneMin: 7, steilMax: 90, rand: 120, strRand: 60, extra: [o] });
+        if (fg) gruende['  Feld dahinter: ' + fg] = (gruende['  Feld dahinter: ' + fg] || 0) + 1;
+      }
+    }
+    if (g) gruende[g] = (gruende[g] || 0) + 1; else ok++;
+  }
+  return { kandidaten: plaetze.length, ok, gruende };
 }
 
 /** Ein Planungsschritt (alle PLANUNG_TAKT Ticks): Wohnraum, dann eine Arbeitsstätte. */
@@ -707,6 +936,8 @@ export function planungsSchritt(z, herr) {
     versuche(z, herr, 'haus');
   }
   if (zweiterSpeicher(z, herr, st)) return;
+  // Zweimal am Tag wachsen die Felder eines Hofs in freies Nachbarland nach (Reserve wird genutzt)
+  if (z.tick % 300 === 250) felderNachwachsen(z, herr);
   // Einmal je halbem Tag: offene Gassenenden an Nachbarstraßen anschließen (Schleifen statt Sackgassen)
   if (z.tick % 300 === 50) { const pts = gassenEndeAnschliessen(z); if (pts) { strasseHinzufuegen(z, pts, 'gasse', 'anschluss'); log(z, herr, 'Gasse angeschlossen'); } }
   // Arbeit: freie Hände minus Reserve für das Anwerben

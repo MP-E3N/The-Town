@@ -2,11 +2,14 @@
 
 Übergabe für die nächste Sitzung. Überblick über das ganze Projekt: `PROJEKT.md`. Konzept: `KONZEPT.md`.
 
-## Stand (2026-11-13, nach Runde 8)
-- Git: `origin` = github.com/MP-E3N/The-Town, Branch `main`. Runden 6, 7 und 8 in EINEM Commit (2026-11-13) committet
-  und gepusht (vorher Runde 5: f0c2b30). Nutzer hat Runden 6–8 noch nicht selbst gespielt.
-- Tests: `node tests/sim.test.js` → „ALLES GRUEN“ (≈ 5 s). Kluger Bot gewinnt 5/5 Karten an Tag 20–28. 49 Prüfungen.
-  „Nichtstun“ verliert seit Runde 7 nicht mehr (größere Startfelder), gewinnt aber nicht.
+## Stand (2026-11-13, nach Runde 11)
+- Git: `origin` = github.com/MP-E3N/The-Town, Branch `main`. Runde 9 Teil 1 (Punkte 2–7) lokal committet 19e88f5 +
+  Tag `sicherung-vor-arbeitern` (Sicherung auf Nutzerwunsch, NICHT gepusht). Teil 2 (Arbeiterzahlen) liegt danach
+  uncommittet bzw. im nächsten Commit. Zurück zur Balance vor Runde 9: `git checkout sicherung-vor-arbeitern -- data/ sim/wirtschaft.js sim/baumeister.js`.
+- Runden 10 + 11 uncommittet (zusammen mit Runde 9 Teil 2). Tests: `node tests/sim.test.js` → „ALLES GRUEN“ (≈ 8 s), 65 Prüfungen.
+- **Wartet auf Nutzer:** Entscheidung zum Vorschlag „Herr & Stadt / Handwerk / Stände“ (Protokoll Runde 11) — erst danach bauen.
+- (Runde 9:) 57 Prüfungen. Kluger Bot gewinnt 5/5, seit den Arbeiterzahlen
+  aber später: vorher 42@23 7@23 99@29 5@21 1234@21 → nachher 42@28 7@24 99@39 5@23 1234@35. „Nichtstun“ gewinnt nicht.
 - Nutzer hat zweimal gespielt: „guter Wuselfaktor“, „macht auf jeden Fall schon Laune“.
 - Starten: Vorschau „lehnsherr“ (Port 5178) oder
   `powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr` → http://localhost:5178 (`?seed=42`).
@@ -14,7 +17,16 @@
 ## Zu Beginn der nächsten Sitzung
 1. `fehler.log` lesen (Browser-Fehler aus den Spieltests des Nutzers; Datei ist in `.gitignore`).
 2. Bei Straßen/Gassen/Häusern/Markt: Skill `stadtplaner` benutzen, `LERNBUCH.md` lesen, mit `tools/stadtplan.mjs` messen.
-3. Nutzer fragen (Runde 8): Stehen Tore jetzt richtig? Schließen die Mauertürme am Wasser die Lücke? Gefallen die
+3. Nutzer fragen (Runde 11): Vorschlag Herr & Stadt annehmen? Anteile (Nahrung 15 %, Holz 10 %, Stein/Eisen 30 %)?
+   Burghof ja/nein? Erstes Konsumgut Tuch oder Bier? „Bitte an den Rat“? Ist die Flur-Anzeige verständlich?
+3a. Nutzer fragen (Runde 10): Gefallen die Häuserzeilen am Markt? Soll der Block hinten mit einer Quergasse geschlossen
+   werden? Zinnen jetzt richtig? Wie fühlt sich die Arbeit mit dem Team an (Protokolle lesbar, zu viel/zu wenig)?
+   Danach: Skill `entwicklerteam` für jede Runde benutzen.
+3b. Nutzer fragen (Runde 9): Sind Zinnen/Wehrgang als außen/innen klar? Palisade schmal genug? Turm in der Mauer gut
+   (Eingang innen, 0,2 Kacheln nach außen vorgeschoben)? Kirche schön und richtig gestellt? Trapezfelder sichtbar genug?
+   Hofbrand-Popup und Preis (10 Holz + 15 Gold) passend, 4 Tage Verwildern ok? Straßen-Bearbeiten bequem? Fühlen sich die
+   höheren Arbeiterzahlen gut an — oder zu zäh (Bot-Siege bis zu 14 Tage später)?
+4. Nutzer fragen (Runde 8): Stehen Tore jetzt richtig? Schließen die Mauertürme am Wasser die Lücke? Gefallen die
    Häuserzeilen mit Zwischenstücken? Ist der Steinwurf von der Mauer stark genug (KAMPF.steinwurf)?
    Hinweis: Runde 8 im Browser meist bei ausgeblendetem Vorschaufenster geprüft (Tests + Fehlerfreiheit), Bild nur teils.
 4. Nutzer fragen (Runde 7): Gefallen Straßenbild, Marktübergänge und Flickenteppich-Felder? Sind es jetzt
@@ -25,6 +37,82 @@
    bequem? (Runde 5 im Browser nur über simulierte Eingaben geprüft, nicht live mit der Maus gespielt.)
 
 ## Verlauf der Runden
+### Runde 11 — Flur-Anzeige, Felder wachsen nach, Team-Meeting Herr & Stadt
+Protokoll: `.claude/team/protokolle/2026-11-13-runde11.md` (mit Meeting-Ergebnis und Vorschlag).
+- **fehler.log** leer, Leitung per Testzeile geprüft.
+- **Warum lag Land brach (Nutzerbild Hang zum Fluss)?** Gemessen: nicht der Hang. Höfe wuchsen nur beim Anlegen,
+  seitlich nur im Hufenstreifen, neue Höfe fanden keinen Platz an Wegen (0 gültige Plätze auf 3 Karten).
+  → `felderNachwachsen` (sim/baumeister.js, 2× täglich ein Hof, Streifen +FELD.nachwachsenBreiter 4,6), mehr
+  Startfeld-Stellen, Hof am Hang bis 60, ehrliche Meldung. Seed 42 Tag 20: Acker genutzt 42 → 54 %.
+- **Anzeige:** `flurAuswertung` (Klassen: Feld, Reserve, Rest, zu steil, Fels, Wege/Bauten, ohne Weg) + `hofAusblick`
+  → Stadt-Seite „Ackerland x % genutzt · Reserve y“ + Satz; Taste Z färbt die Klassen (render/szene.js `flurBild`).
+  Diagnose für Entwickler: `hofPlatzDiagnose(z, 0)` zählt Ablehnungsgründe für Hofplätze.
+- Neue Werte in data/werte.js: FELD.steilMax 70, restKacheln 14, nachwachsenBreiter 4600.
+- **Team-Meeting** (Ökonom, Stadtplaner, Bedienung, Simulation) zu Lehnsherr-Anteil und Bevölkerungsgruppen → Vorschlag
+  in 3 Stufen, NICHTS davon gebaut (Nutzer wollte Rückmeldung).
+- Bot: 42@25 7@26 99@23 5@20 1234@24.
+
+### Runde 10 — Entwicklerteam, Straßenpunkte, Häuserketten, eckige Äcker, Zinnen
+Ab jetzt arbeitet das Projekt mit dem **Entwicklerteam** (Skill `entwicklerteam`, `.claude/team/TEAM.md`,
+Experten in `.claude/agents/`, Lernbücher, Protokolle). Protokoll dieser Runde: `.claude/team/protokolle/2026-11-13-runde10.md`.
+- **Team (Nutzerpunkt 6, zuerst):** 7 Experten (Stadtplaner, Grafiker, Simulation, Ökonom & Historiker, Feldherr,
+  Bedienung, Prüfer) + Projektleitung; Meetings Kickoff → Frühwarnung → Zwischenstand → Testrunde → Retrospektive;
+  Training über Lernbücher (Regeln oben, Einträge unten, jede 3. Runde verdichten); Fehlerkatalog.
+  Hinweis: Die neuen Agenten-Typen sind erst in einer neuen Sitzung direkt aufrufbar; bis dahin `general-purpose` mit
+  „Lies .claude/agents/<rolle>.md“ (steht in der Routine).
+- **Straßenpunkte:** `vereinfachen()` (sim/strassen.js, Douglas-Peucker 0,35) in `strasseHinzufuegen` → nur echte Ecken.
+  Seed 42: 111 → 43 Punkte (max 26 → 6).
+- **Häuserketten (Stadtplaner-Agent):** Baufluchten im Kern (`kernFluchten` in stadtplaner.js: vier Platzkanten +
+  beide Seiten jeder Kernstraße), `kernPlaetze`/`findeHausPlatz` (baumeister.js): Häuser rücken an Nachbarhaus, Platz,
+  Einmündung, Rathaus heran; Größenliste bis 1,0 Kacheln breit; keine Zufallsdrehung im Kern; `platzRandPlaetze` entfernt.
+  Kennzahl `kernKennzahlen` + `tools/stadtplan.mjs` (4. Argument = so viele Häuser setzen). Platzrand mit Hausfront
+  (Start + 10 Häuser): 42: 57 → 86 %, 7: 2 → 61 %. Startstadt ändert sich (Seed 42 oben drei schmale Häuser am Hang).
+- **Äcker:** Umriss eckig (Trapeze bleiben, runde Ecken weg).
+- **Mauern:** Brustwehr schmal, Zinnen kleine Klötze mit Licht-/Schattenkante; Eckkappen weg, stattdessen Stücke an
+  Ecken um halbe Dicke verlängert (`mauerEcken` liefert Eck-Enden); Winter-Schnee auf Mauern schwächer.
+- **Fehler gefunden (Zwischenstand):** `bewegeZu` suchte nach gescheiterter Wegsuche jeden Tick neu (Seed 1234 62 s).
+  `u.pfadFehl` + echte Wartezeit → 2,6 s. Tests 7,8 s, 61 Prüfungen grün. Bot: 42@24 7@26 99@36 5@23 1234@28.
+- Offen: Quergasse, die den Block hinten schließt (Bogen im Nutzerbild); kleine Lücken an spitzen Ecken (Seed 1234: 7).
+
+### Runde 9 — Mauerseiten, Turm in der Mauer, Kirche, Trapezfelder, Hofbrand, runde Straßen, Arbeiterzahlen
+Nutzerwunsch (8 Punkte mit Bildern):
+- **Mauern:** keine Pfeiler-Knoten mehr (sahen aus wie Kontrollpunkte). Rasterpunkte nur im Mauer-/Turm-Werkzeug oder bei
+  ausgewähltem Mauerstück; an Winkeln ein Eckstein in Wehrgangfarbe (`mauerEcken` in szene.js). Jedes Stück hat die
+  Außenseite auf lokal −v (Zinnen/Spitzen, Sprite oben), Wehrgang auf +v. `mauerUmdrehen()` (befehle.js) legt innen
+  auf die Seite von Burg oder Markt (was näher liegt); Befehl `mauer` mit `tauschen:true` (Taste R) dreht. Vorschau zeigt
+  „außen/innen“ und Zinnen. Palisade t 500 → 360: schlanke angespitzte Stämme außen, Bohlen-Laufsteg innen.
+  Soldaten stehen auf dem Wehrgang (`mauerPlaetze` v = t/4), steigen innen auf/ab (`innenSeite()` in militaer.js).
+- **Turm in der Mauer:** Wachturm-Werkzeug rastet über einem Mauer-/Palisadenstück (≤ 1,1 Kacheln) auf dessen Linie ein,
+  0,2 Kacheln nach außen, Drehung Mauer+180° → Front/Tür (neu im Turm-Sprite oben) zeigt innen. Befehl `bauen` mit
+  `anMauer:true` → `g.anMauer`, keine Zufahrt.
+- **Kirche:** 3,2 × 5,8 Kacheln, Westturm mit Kupferhelm, Strebepfeiler, Querhaus mit Vierungsreiter, Chor + Apsis,
+  Sakristei, ummauerter Kirchhof (Tor, Kiesweg, Gräber, Linden). Platzwahl nur noch in der Flucht von Markt oder nächster
+  Straße (± 90° zu Osten erlaubt, Marktflucht bevorzugt). Seed 42: w 0 wie der Markt.
+- **Felder:** konvexe Vierecke `f.poly` (Weltkoordinaten). `ecken/punktIn/ueberlappt` (lib.js) können Vierecke
+  (Trennachsen = Kantennormalen), `flaecheVon`, `radiusVon`. `zwickelFuellen()` (baumeister.js) schiebt nach dem
+  Rechteck-Wachsen die Ecken einzeln hinaus (vorn ±u, hinten ±u und +v, max. 6 Kacheln, nur konvex). Darstellung mit runden
+  Ecken (`feldUmriss`). Hof anklicken: seine Felder gelb + Linien, Info zeigt Zahl und Fläche.
+- **Hofbrand:** `gebaeudeZerstoert` macht Höfe/Viehhöfe zur `zustand:'ruine'` (zählt nicht in stadtStatus, keine Arbeit,
+  blockiert Platz). Ereignis `hofBrand` → Popup (#popup) „helfen“ / „Hinsehen“ / „Später“; ⚒-Zeichen über der Ruine.
+  Befehl `wiederaufbau` kostet `HOF_BRAND.hilfe` (10 Holz + 15 Gold), Baustelle mit 50 % Arbeit. Ohne Hilfe:
+  `felderVerwittern()` (wirtschaft.js) f.verfall 0..1000 in 4 Tagen, dann Felder weg und Ruine `weg`. Nach dem
+  Wiederaufbau roden die Bauern das Unkraut wieder heraus; verwilderte Felder tragen weniger.
+- **Straßen:** `strassenLinie(s)` (lib.js) rundet jede Ecke mit einem quadratischen Bogen (rund = 35 % der kürzeren
+  Nachbarstrecke, max. 3,5 Kacheln; stark = 49 %, max. 9; eckig = Punkt). Raster/Segmente (abgeleitet.js) UND Bild
+  benutzen sie. `s.rund[i]` 0/1/2 (fehlt = 1). Werkzeug „✎ Bearbeiten“: Punkte der Straße unter der Maus, Klick = rund →
+  stark → eckig, Ziehen = verschieben (Befehle `strasseEcke`, `strassePunkt`, geprüft mit strassePruefen).
+- **Arbeiter (Sicherung vorher: Tag `sicherung-vor-arbeitern`):** Recherche fand kaum harte Zahlen fürs Hochmittelalter
+  (Hufe ernährte eine Familie, Gesinde Knechte/Mägde; Steinbrüche/Gruben meist klein und saisonal, Bauhütten-Abrechnungen
+  selten nach Bruch aufgeteilt; Werte daher Schätzungen). Realistisch ≈ / Vorschlag umgesetzt:
+  Bauernhof 4–6 (Familie + Knecht/Magd) → 4 · Viehhof 3–4 → 3 · Fischer 2 → 2 · Holzfäller-Rotte 3–4 → 3 ·
+  Steinbruch 4–8 → 5 · Erzgrube 6–12 → 5 · Waffenschmiede Meister + Geselle + Lehrling 3–4 → 3. ticksProEinheit im selben
+  Verhältnis erhöht (voll besetzt = gleiche Menge), Hof: Säen/Ernten doppelte Arbeit, Pflege 2 Bauern bei 50 Ticks/Punkt.
+  Hof 5 Wohnplätze (vorher 4). Baustellen unverändert (2 bzw. 3).
+- Neue Tests: Innenseite beim Ziehen in beide Richtungen, R tauscht, Turm-Eingang innen, Straßenecke rund/eckig/
+  verschieben, Kirche in Marktflucht, Trapezfelder ohne Überlappung (14 von 16), Ruine, Verwildern, Wiederaufbau, Aufgabe.
+- Browser (Vorschaufenster ausgeblendet, Bilder per vorspulen(0)): Kirche, Steinmauer mit Zinnen + Turm, Palisade + Turm,
+  Popup + Hilfe-Knopf, Straßen-Bearbeiten mit simulierten Maus-Ereignissen, Hof-Auswahl. Konsole ohne Fehler.
+
 ### Runde 8 — Tore quer, Mauertürme, Schnee, Kampf auf Mauern, Häuserzeilen
 Nutzerwunsch (4 Punkte mit Bildern, Freiburg-Altstadt als Vorbild):
 - **Tore:** `torAusrichten()` (strassen.js) stellt das Torhaus rechtwinklig zur Straße auf den Schnittpunkt Mauer × Straße;
@@ -150,7 +238,10 @@ Karte, Baumeister, Wirtschaft, 4 Bedürfnisse, Militär, Räuber, Jahreszeiten, 
 - Uferböschung recht breit; Burghof wirkt leer. Torhaus über Feldwegen wirkt evtl. übertrieben (gleiches Torhaus).
 - Räuber laufen um kurze Mauern herum (gewollt); kein „Tor schließen“. Mauerbesatzung bekommt keine eigene Anzeige.
 - „Nichtstun“ verliert seit Runde 7 nicht mehr (Startfelder wachsen) — gewinnt aber nicht; ggf. Startfelder kleiner.
-- Straßen-Werkzeug: Punkte verschieben fehlt (bisher entfernen + neu ziehen); Spieler-Straßen tragen `vomHerrn`, ungenutzt.
+- Straßen: Punkte verschieben/runden geht seit Runde 9 (nur einzelne Punkte, keine neuen einfügen). Spieler-Straßen tragen `vomHerrn`, ungenutzt.
+- Runde 9: Häuser/Gassen planen weiter an `s.punkte` (Kontrolllinie), Raster/Kollision an der gerundeten Linie — an stark
+  gerundeten Ecken können Häuser etwas Abstand zur Straße haben. Ruinen-Popup zeigt nur der eigene Herr (Multiplayer ok).
+- Runde 9: Trapezfelder nur beim Anlegen eines Hofs (wachsen später nicht nach). Weide-Viereck gleiche Regeln.
 - Speichern im Browser fehlt; Mühle/Bäcker, Kirche als 5. Bedürfnis, Markttage, Belagerung.
 - Multiplayer: zweiter Herr mit eigener Burg, dann WebSocket-Lockstep (`netz/PROTOKOLL.md`).
 

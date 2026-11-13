@@ -84,8 +84,8 @@ export function arbeitVerteilen(z, herr) {
   baustellen.sort((a, b) => (Number(b.auftrag) - Number(a.auftrag)) || (a.id - b.id));
   const besetze = (g) => {
     if (!hatArbeit(z, g, h)) return;
-    // Zur Feldpflege genügt ein Bauer; der zweite hat frei (hilft auf Baustellen, kann rekrutiert werden).
-    const max = g.art === 'hof' && !feldAufgabe(z, g) ? 1 : GEBAEUDE[g.art].arbeiter;
+    // Zur Feldpflege genügen FELD.pflegeBauern; die übrigen haben frei (helfen auf Baustellen, können rekrutiert werden).
+    const max = g.art === 'hof' && !feldAufgabe(z, g) ? FELD.pflegeBauern : GEBAEUDE[g.art].arbeiter;
     const n = Math.min(max, frei);
     g.belegt = n; frei -= n;
   };

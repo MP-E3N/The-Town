@@ -54,10 +54,15 @@ function bewegeZu(z, u, zx, zy, modus, tempo) {
   if (d <= tempo) { u.x = zx; u.y = zy; return 'da'; }
   let tx = zx, ty = zy;
   if (!freieLinie(z, u.x, u.y, zx, zy, modus)) {
+    // WARUM pfadFehl (Runde 10): Nach einer gescheiterten Suche war u.pfad leer — dadurch suchte die Einheit trotz
+    // Wartezeit JEDEN Tick neu (A* mit 12 000 Knoten). Ein Soldat vor einem unerreichbaren Räuber kostete so
+    // Sekunden (Seed 1234: Bot-Lauf 62 s). Jetzt wartet er wirklich, bevor er es wieder versucht.
+    if (u.pfadFehl && z.tick < u.neuPfad) return 'kein';
     if (!u.pfad || u.pfadZiel !== zielK || z.tick >= u.neuPfad || u.pi >= u.pfad.length) {
       u.pfad = findePfad(z, kachel(u.x, u.y), zielK, modus, { max: 12000 });
       u.pfadZiel = zielK; u.pi = 1; u.neuPfad = z.tick + 25 + (u.id % 7);
-      if (!u.pfad) { u.neuPfad = z.tick + 20; return 'kein'; }
+      if (!u.pfad) { u.neuPfad = z.tick + 20 + (u.id % 7); u.pfadFehl = 1; return 'kein'; }
+      u.pfadFehl = 0;
     }
     if (u.pi < u.pfad.length) {
       const nk = u.pfad[u.pi];

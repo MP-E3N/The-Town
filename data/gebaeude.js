@@ -5,6 +5,9 @@
  * arbeit = Bau-Arbeitspunkte (1 Bauarbeiter = 1 Punkt pro Tick).
  * ticksProEinheit = Arbeiter-Ticks pro erzeugter Einheit.
  * gruppe = Reihenfolge der Arbeiterverteilung (kleiner = zuerst).
+ * Runde 9 (Arbeiter wie im Mittelalter geschätzt, siehe HANDOFF): mehr Leute je Betrieb; ticksProEinheit im selben
+ *   Verhältnis erhöht → ein VOLL besetzter Betrieb erzeugt so viel wie vorher, braucht aber mehr Bewohner.
+ *   Alte Werte: hof 2, viehhof 2/500, fischer 1/350, holzfaeller 2/220, steinbruch 2/300, erzgrube 2/600, schmiede 2/600.
  * auftrag = nur der Herr kann es in Auftrag geben (militärisch); sonst plant der Baumeister.
  */
 
@@ -13,14 +16,14 @@ export const GEBAEUDE = {
   platz: { name: 'Marktplatz', b: 5400, t: 3200, begehbar: true },
   speicher: { name: 'Speicher', b: 2200, t: 2800, kosten: { holz: 30 }, arbeit: 900, hp: 400, lager: true },
   haus: { name: 'Wohnhaus', b: 1150, t: 1600, kosten: { holz: 8 }, arbeit: 450, hp: 150, wohnplaetze: 5, zone: 1 },
-  hof: { name: 'Bauernhof', b: 1800, t: 2100, kosten: { holz: 14 }, arbeit: 600, hp: 220, arbeiter: 2, wohnplaetze: 4, zone: 2, ware: 'nahrung', gruppe: 0 },
-  viehhof: { name: 'Viehhof', b: 1700, t: 2300, kosten: { holz: 12 }, arbeit: 550, hp: 200, arbeiter: 2, wohnplaetze: 3, zone: 3, ware: 'nahrung', ticksProEinheit: 500, gruppe: 0 },
-  fischer: { name: 'Fischerhütte', b: 1100, t: 1300, kosten: { holz: 6 }, arbeit: 300, hp: 120, arbeiter: 1, zone: 1, ware: 'nahrung', ticksProEinheit: 350, gruppe: 0, amWasser: true },
-  holzfaeller: { name: 'Holzfäller', b: 1300, t: 1500, kosten: { holz: 6 }, arbeit: 350, hp: 140, arbeiter: 2, zone: 4, ware: 'holz', ticksProEinheit: 220, gruppe: 1 },
-  steinbruch: { name: 'Steinbruch', b: 1500, t: 1500, kosten: { holz: 10 }, arbeit: 400, hp: 160, arbeiter: 2, zone: 5, ware: 'stein', ticksProEinheit: 300, gruppe: 3, braucht: 'fels' },
-  erzgrube: { name: 'Erzgrube', b: 1500, t: 1600, kosten: { holz: 14 }, arbeit: 500, hp: 180, arbeiter: 2, zone: 5, ware: 'eisen', ticksProEinheit: 600, gruppe: 4, braucht: 'erz' },
+  hof: { name: 'Bauernhof', b: 1800, t: 2100, kosten: { holz: 14 }, arbeit: 600, hp: 220, arbeiter: 4, wohnplaetze: 5, zone: 2, ware: 'nahrung', gruppe: 0 },
+  viehhof: { name: 'Viehhof', b: 1700, t: 2300, kosten: { holz: 12 }, arbeit: 550, hp: 200, arbeiter: 3, wohnplaetze: 3, zone: 3, ware: 'nahrung', ticksProEinheit: 750, gruppe: 0 },
+  fischer: { name: 'Fischerhütte', b: 1100, t: 1300, kosten: { holz: 6 }, arbeit: 300, hp: 120, arbeiter: 2, zone: 1, ware: 'nahrung', ticksProEinheit: 700, gruppe: 0, amWasser: true },
+  holzfaeller: { name: 'Holzfäller', b: 1300, t: 1500, kosten: { holz: 6 }, arbeit: 350, hp: 140, arbeiter: 3, zone: 4, ware: 'holz', ticksProEinheit: 330, gruppe: 1 },
+  steinbruch: { name: 'Steinbruch', b: 1500, t: 1500, kosten: { holz: 10 }, arbeit: 400, hp: 160, arbeiter: 5, zone: 5, ware: 'stein', ticksProEinheit: 750, gruppe: 3, braucht: 'fels' },
+  erzgrube: { name: 'Erzgrube', b: 1500, t: 1600, kosten: { holz: 14 }, arbeit: 500, hp: 180, arbeiter: 5, zone: 5, ware: 'eisen', ticksProEinheit: 1500, gruppe: 4, braucht: 'erz' },
   // Aufträge des Herrn
-  schmiede: { name: 'Waffenschmiede', b: 1600, t: 1900, kosten: { holz: 15, stein: 10 }, arbeit: 700, hp: 250, arbeiter: 2, ware: 'speere', ticksProEinheit: 600, gruppe: 5, auftrag: true },
+  schmiede: { name: 'Waffenschmiede', b: 1600, t: 1900, kosten: { holz: 15, stein: 10 }, arbeit: 700, hp: 250, arbeiter: 3, ware: 'speere', ticksProEinheit: 900, gruppe: 5, auftrag: true },
   kaserne: { name: 'Kaserne', b: 2800, t: 3400, kosten: { holz: 30, stein: 20, gold: 40 }, arbeit: 1400, hp: 600, plaetze: 10, auftrag: true },
   turm: { name: 'Wachturm', b: 1300, t: 1300, kosten: { holz: 10, stein: 15 }, arbeit: 700, hp: 500, schiesst: 'turm', auftrag: true },
   palisade: { name: 'Palisade', b: 1500, t: 360, kosten: { holz: 3 }, arbeit: 120, hp: 200, mauer: true, auftrag: true },

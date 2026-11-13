@@ -8,7 +8,7 @@
 
 import { GEBAEUDE, ZONEN, WARENNAME, WAREN, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
 import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME, MILITAER, NIEDERLAGE_BEWOHNER, FELD, KAMPF, HOF_BRAND } from '../data/werte.js';
-import { stadtStatus } from '../sim/baumeister.js';
+import { stadtStatus, flurAuswertung, hofAusblick, FLUR_KLASSEN } from '../sim/baumeister.js';
 import { tageBisErnte } from '../sim/wirtschaft.js';
 import { datum, flaecheVon } from '../sim/lib.js';
 
@@ -51,6 +51,26 @@ function hilfeKnopf(zz, g) {
   const fehlt = Object.keys(k).filter((w) => (h.lager[w] || 0) < k[w]);
   const preis = Object.entries(k).map(([w, n]) => `${n} ${SYMBOL[w]}`).join(' + ');
   return `<div class="knoepfe"><button data-wiederaufbau="${g.id}" ${fehlt.length ? 'disabled' : ''} title="Die Bauern bauen sofort wieder auf, die Hälfte der Arbeit ist mit deiner Hilfe schon getan">⚒ Beim Wiederaufbau helfen (${preis})</button></div>` + (fehlt.length ? `<div class="klein" style="color:var(--schlecht)">Es fehlt: ${fehlt.map((w) => WARENNAME[w]).join(', ')}</div>` : '');
+}
+
+/**
+ * Flur (Runde 11): Wie viel Acker-/Weideland ist genutzt, was ist Reserve und warum liegt etwas brach?
+ * Gleiche Auswertung wie der Baumeister (sim/baumeister.js flurAuswertung) — Z zeigt dasselbe farbig auf der Karte.
+ */
+let flurCache = null;
+function flurZeilen(zz, herr) {
+  if (!flurCache || flurCache.version !== zz.version || flurCache.zonenVersion !== zz.zonenVersion) flurCache = flurAuswertung(zz);
+  const zeile = (name, a) => {
+    const nutzbar = a[1] + a[2] + a[3] + a[4] + a[7];
+    if (!nutzbar) return '';
+    const pz = Math.round(a[1] * 100 / nutzbar);
+    const tipp = [1, 2, 7, 3, 4, 5, 6].filter((i) => a[i]).map((i) => `${FLUR_KLASSEN[i]}: ${a[i]} Kacheln`).join(' · ')
+      + '. Reserve nutzen die Höfe daneben (Felder wachsen nach) oder ein neuer Hof. „Ohne Weg“ braucht erst einen Feldweg. Rest ist zu klein für einen Hof. Taste Z zeigt es auf der Karte.';
+    return `<div class="zeile" data-tipp="${tipp}"><span class="w">${name}</span><span>${pz} % genutzt · Reserve ${a[2] + a[7]}${a[4] ? ' · steil ' + a[4] : ''}</span></div>`;
+  };
+  const z1 = zeile('Ackerland', flurCache.acker), z2 = zeile('Weideland', flurCache.weide);
+  if (!z1 && !z2) return '';
+  return z1 + z2 + `<div class="klein">${hofAusblick(zz, herr)}</div>`;
 }
 
 function kostenText(art) {
@@ -303,6 +323,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
       <div class="zeile"><span class="w">Höfe · Vieh · Fischer</span><span>${st.anzahl.hof || 0} · ${st.anzahl.viehhof || 0} · ${st.anzahl.fischer || 0}</span></div>
       <div class="zeile"><span class="w">Holzfäller · Stein · Erz · Schmiede</span><span>${st.anzahl.holzfaeller || 0} · ${st.anzahl.steinbruch || 0} · ${st.anzahl.erzgrube || 0} · ${st.anzahl.schmiede || 0}</span></div>
       <div class="zeile"><span class="w">Baustellen</span><span>${Object.values(st.anzahlBau).reduce((a, b) => a + b, 0)}</span></div>
+      ${flurZeilen(zz, herr)}
       <h3>Steuer</h3>
       <div class="steuer">${STEUER.map((s, i) => `<button data-steuer="${i}" class="${h.steuer === i ? 'an' : ''}" title="Gold/Tag = Bewohner ÷ ${s.teiler}, Laune ${s.laune >= 0 ? '+' : ''}${s.laune}">${s.name}</button>`).join('')}</div>
       <h3>Militär</h3>

@@ -34,8 +34,11 @@ powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr
   Unterhalt 1 Nahrung + ⅓ Gold pro Tag. Wachtürme schießen. Räuberbanden ab Tag 9, werden größer.
 - **Stadtplaner:** gerade Straßen mit Bögen, Wege als ausgetretene Trampelpfade, Gassen als T-Abzweig mit Blocktiefe, dichte Bürgerhäuser am Markt,
   Straßenmarkt mit Rathaus, Brunnen und Ständen, Kirche mit Portal zur Straße; Burg abseits auf ihrem Hügel.
-- **Mauern:** Rasterpunkte zum Ansetzen (Mauern und Wachtürme rasten ein), Torhaus mit zwei Türmen, wo eine Straße
-  die Mauer kreuzt; Soldaten beziehen per Rechtsklick Stellung auf Mauer/Turm/Torhaus. Rote Nadeln zeigen Angreifer.
+- **Mauern:** Zinnen außen, Wehrgang innen (R tauscht), Wachtürme rasten in die Mauer ein (Eingang innen),
+  Rasterpunkte nur im Werkzeug, Torhaus mit zwei Türmen, wo eine Straße die Mauer kreuzt; Soldaten beziehen per Rechtsklick Stellung auf Mauer/Turm/Torhaus. Rote Nadeln zeigen Angreifer.
+- **Höfe und Felder:** Felder auch als Trapeze (nutzen Keile an Wegen/Ufern), Hof anklicken zeigt seine Felder.
+  Abgebrannte Höfe bleiben Ruine: hilf mit Holz + Gold beim Wiederaufbau, sonst verwildern die Felder in 4 Tagen.
+- **Straßen bearbeiten:** Ecken rund / stark rund / eckig, Punkte verschieben (Werkzeug „✎ Bearbeiten“).
 - **Kollision:** niemand läuft durch Gebäude, Mauern oder die Burg (nur durchs Tor); übers Wasser nur auf der Brücke.
 
 ## Technik
@@ -56,6 +59,28 @@ powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr
 | `tests/` | Simulationstests und Balance-Bots |
 | `tools/stadtplan.mjs` | Messwerkzeug des Stadtplaners (Textkarte + Kennzahlen) |
 | `.claude/skills/stadtplaner/` | Skill „Stadtplaner“ mit Lernbuch |
+| `.claude/skills/entwicklerteam/` | Routine einer Entwicklungsrunde (Meetings, Testrunde, Training) |
+| `.claude/agents/`, `.claude/team/` | Experten des Teams, Lernbücher, Protokolle, Fehlerkatalog |
+
+## Entwicklerteam
+Das Projekt wird von einem kleinen Team aus Fachleuten (KI-Agenten) entwickelt; die Projektleitung ist der Haupt-Agent.
+Jede Runde folgt der Routine `.claude/skills/entwicklerteam/SKILL.md`: **Kickoff → (Frühwarnung) → Umsetzung →
+Zwischenstand → Testrunde → Retrospektive/Training**, schriftlich in `.claude/team/protokolle/`.
+
+| Rolle | Gebiet |
+|---|---|
+| Projektleitung | Wünsche aufnehmen, Reihenfolge, Meetings, Abnahme, HANDOFF/PROJEKT |
+| Stadtplaner | Straßen, Gassen, Bauplätze, Häuserzeilen, Markt, Dichte |
+| Grafiker | Sprites, Szene, Lesbarkeit, Jahreszeiten |
+| Simulation | Determinismus, Raster, Kollision, Wegfindung, Leistung |
+| Ökonom & Historiker | Wirtschaft, Balance, Spielwerte, historische Recherche |
+| Feldherr | Mauern, Tore, Türme, Kampf, Räuber |
+| Bedienung | Werkzeuge, Maus/Tastatur, Fenster, Hilfe |
+| Prüfer | Tests, Testrunden, Code-Durchsicht, Browser-Prüfung |
+
+Jede Rolle führt ein **Lernbuch** (`.claude/team/lernbuecher/`, Stadtplaner im Skill-Ordner) — vor der Arbeit lesen,
+danach Eintrag; jede 3. Runde eine Trainingsrunde (Einträge zu Regeln verdichten). Rollenübergreifende Fehler:
+`.claude/team/fehlerkatalog.md`. Überblick: `.claude/team/TEAM.md`, Experten: `.claude/agents/`.
 
 ## Dokumente
 - `KONZEPT.md` — Spielidee und Zahlen · `HANDOFF.md` — aktueller Stand und Verlauf · `CLAUDE.md` — Regeln für KI-Agenten

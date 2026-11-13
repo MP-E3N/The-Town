@@ -14,7 +14,7 @@ import { GEBAEUDE, ZONEN } from '../data/gebaeude.js';
 import { karteFuer } from '../sim/karte.js';
 import { abgeleitet } from '../sim/abgeleitet.js';
 import { wegGecached } from '../sim/pfad.js';
-import { tuer, tuerKachel } from '../sim/baumeister.js';
+import { tuer, tuerKachel, flurAuswertung } from '../sim/baumeister.js';
 import { hash32, datum, strassenLinie, eckeRund } from '../sim/lib.js';
 import { erzeugeGelaende, zeichneGelaende, vorrendern } from './gelaende.js';
 import { gebaeudeSprite, baeume, figurSprites, figurSchatten, tierSprite, strassenBelag } from './sprites.js';
@@ -55,6 +55,21 @@ function zeichneGedreht(ctx, bild, x, y, w, h, winkel) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(winkel);
   ctx.drawImage(bild, -w / 2, -h / 2, w, h);
   ctx.restore();
+}
+
+/** Flur-Klassen als kleines Bild (eine Kachel = ein Pixel), neu bei geänderter Version/Zonen. */
+const FLUR_FARBE = [null, null, [250, 246, 210], [140, 140, 140], [200, 60, 50], null, null, [240, 150, 40]];
+function flurBild(sz, z) {
+  if (sz.flur && sz.flurV === z.version + '/' + z.zonenVersion) return;
+  sz.flurV = z.version + '/' + z.zonenVersion;
+  if (!sz.flur) { sz.flur = document.createElement('canvas'); sz.flur.width = KARTE_B; sz.flur.height = KARTE_H; }
+  const f = flurAuswertung(z), c = sz.flur.getContext('2d'), img = c.createImageData(KARTE_B, KARTE_H);
+  for (let i = 0; i < f.klasse.length; i++) {
+    const col = FLUR_FARBE[f.klasse[i]];
+    if (!col) continue;
+    img.data[i * 4] = col[0]; img.data[i * 4 + 1] = col[1]; img.data[i * 4 + 2] = col[2]; img.data[i * 4 + 3] = 170;
+  }
+  c.putImageData(img, 0, 0);
 }
 
 function zonenBild(sz, z) {
@@ -101,9 +116,7 @@ function flaeche(links, rechts, i0, i1) {
   return p;
 }
 /**
- * Umriss eines Feldes (Rechteck oder Trapez aus der Simulation) mit leicht gerundeten Ecken, in Kacheln.
- * WARUM gerundet: Echte Äcker haben weiche Enden (der Pflug wendet im Bogen); spitze Trapezecken wirkten hart.
- * Zwischengespeichert je Feld (Form ändert sich nie, nur ob es weg ist).
+ * Umriss eines Feldes (Rechteck oder Trapez aus der Simulation), in Kacheln. Zwischengespeichert je Feld.
  */
 const umrisse = new WeakMap();
 function feldUmriss(f) {
@@ -115,14 +128,10 @@ function feldUmriss(f) {
     const c = Math.cos(f.w * RAD), s = Math.sin(f.w * RAD), hb = f.b / 2000, ht = f.t / 2000, x = f.x / 1000, y = f.y / 1000;
     e = [x - c * hb + s * ht, y - s * hb - c * ht, x + c * hb + s * ht, y + s * hb - c * ht, x + c * hb - s * ht, y + s * hb + c * ht, x - c * hb - s * ht, y - s * hb + c * ht];
   }
+  // Eckig, genau wie die Simulation rechnet (Runde 10: Nutzer will Trapeze, aber keine runden Ecken)
   const pfad = new Path2D();
-  const m = (i) => [(e[i] + e[(i + 2) % 8]) / 2, (e[i + 1] + e[(i + 3) % 8]) / 2];
-  const start = m(6);
-  pfad.moveTo(start[0], start[1]);
-  for (let i = 0; i < 8; i += 2) {
-    const a = m((i + 6) % 8), b = m(i), l = Math.min(Math.hypot(e[i] - a[0], e[i + 1] - a[1]), Math.hypot(e[i] - b[0], e[i + 1] - b[1]));
-    pfad.arcTo(e[i], e[i + 1], b[0], b[1], Math.min(0.7, l * 0.5));
-  }
+  pfad.moveTo(e[0], e[1]);
+  for (let i = 2; i < 8; i += 2) pfad.lineTo(e[i], e[i + 1]);
   pfad.closePath();
   let r = 0;
   for (let i = 0; i < 8; i += 2) r = Math.max(r, Math.hypot(e[i] - f.x / 1000, e[i + 1] - f.y / 1000));
@@ -342,13 +351,19 @@ function punktAuf(w, t) {
 }
 
 /**
- * Ecken zwischen Mauerstücken, die im Winkel (> 6°) aneinanderstoßen: dort zeichnet die Szene einen Eckstein.
- * Gehört dem Stück mit der höheren ID (wird später gezeichnet und liegt so über beiden). Zwischengespeichert je z.version.
+ * Ecken zwischen Mauerstücken, die im Winkel (> 6°) aneinanderstoßen. Liefert je Stück-ID, an welchem Ende (lokal −u
+ * bzw. +u) eine Ecke liegt; dort wird das Stück beim Zeichnen um eine halbe Mauerdicke verlängert und schließt so den
+ * Keil. WARUM nicht mehr ein Eckstein-Kreis (Runde 9): Er sah — besonders weiß im Winter — wie ein Knotenpunkt aus.
+ * Zwischengespeichert je z.version.
  */
 function mauerEcken(sz, z) {
-  if (sz.mauerEcken && sz.mauerEcken.version === z.version) return sz.mauerEcken.liste;
+  if (sz.mauerEcken && sz.mauerEcken.version === z.version) return sz.mauerEcken.karte;
   const st = z.gebaeude.filter((g) => g.zustand !== 'weg' && (g.art === 'mauer' || g.art === 'palisade'));
-  const liste = [];
+  const karte = new Map();
+  const merke = (g, x, y) => {
+    const seite = (x - g.x) * Math.cos(g.w * RAD) + (y - g.y) * Math.sin(g.w * RAD) >= 0 ? 'plus' : 'minus';
+    const m = karte.get(g.id) || { minus: false, plus: false }; m[seite] = true; karte.set(g.id, m);
+  };
   for (let i = 0; i < st.length; i++) {
     const a = st[i], ea = mauerEnden(a);
     for (let j = i + 1; j < st.length; j++) {
@@ -356,12 +371,12 @@ function mauerEcken(sz, z) {
       let d = Math.abs(((a.w - b.w) % 180 + 180) % 180); d = Math.min(d, 180 - d);
       if (d <= 6) continue;
       for (let p = 0; p < 4; p += 2) for (let q = 0; q < 4; q += 2) {
-        if (Math.hypot(ea[p] - eb[q], ea[p + 1] - eb[q + 1]) < 300) liste.push({ id: Math.max(a.id, b.id), x: ea[p] / 1000, y: ea[p + 1] / 1000 });
+        if (Math.hypot(ea[p] - eb[q], ea[p + 1] - eb[q + 1]) < 300) { merke(a, ea[p], ea[p + 1]); merke(b, eb[q], eb[q + 1]); }
       }
     }
   }
-  sz.mauerEcken = { version: z.version, liste };
-  return liste;
+  sz.mauerEcken = { version: z.version, karte };
+  return karte;
 }
 
 /** Bürgerhäuser (8 Plätze) bekommen ein eigenes Bild. */
@@ -537,6 +552,13 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
   ctx.globalAlpha = zonenAlpha; ctx.imageSmoothingEnabled = true;
   ctx.drawImage(sz.zonen, 0, 0, KARTE_B, KARTE_H);
   ctx.globalAlpha = 1;
+  // Z (oder Acker-/Weide-Werkzeug): Flur-Nutzung — hell = Reserve, orange = ohne Weg, grau = Rest, rot = zu steil
+  if (ui.zonenZeigen || (ui.werkzeug && ui.werkzeug.typ === 'zone' && (ui.werkzeug.zone === 2 || ui.werkzeug.zone === 3))) {
+    flurBild(sz, z);
+    ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 0.7;
+    ctx.drawImage(sz.flur, 0, 0, KARTE_B, KARTE_H);
+    ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = true;
+  }
 
   // Felder und Weiden
   const gewaehlt = ui.auswahl >= 0 ? z.gebaeude[ui.auswahl] : null;
@@ -697,18 +719,13 @@ export function zeichneSzene(sz, z, kam, ui, alpha, dt, dtEcht) {
         ctx.fillText('⚒', gx, gy - gt / 2 - s * 0.95); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
       }
     } else {
-      zeichneGedreht(ctx, sp.cv, gx, gy, gb, gt, g.w * RAD);
-      // Mauerecken: Wo zwei Stücke im Winkel aneinanderstoßen, schließt ein Eckstein den Keil — in der Farbe des
-      // Wehrgangs, ohne Ring. WARUM keine Pfeiler mehr: Sie sahen aus wie Kontrollpunkte (Nutzerwunsch Runde 9);
-      // die Rasterpunkte zeigt nur noch das Mauer-/Turm-Werkzeug oder ein ausgewähltes Mauerstück.
-      if (g.art === 'mauer' || g.art === 'palisade') {
-        const stein = g.art === 'mauer';
-        for (const q of mauerEcken(sz, z)) {
-          if (q.id !== g.id) continue;
-          ctx.fillStyle = stein ? (winter ? '#dfe2e6' : '#a49d8e') : '#6a4a2a';
-          ctx.beginPath(); ctx.arc(q.x, q.y, gt * (stein ? 0.5 : 0.45), 0, 7); ctx.fill();
-        }
-      }
+      // Mauern: an Ecken um eine halbe Dicke verlängert gezeichnet (schließt den Keil, keine Knoten im Bild).
+      // Die Rasterpunkte zeigt nur das Mauer-/Turm-Werkzeug oder ein ausgewähltes Mauerstück.
+      const ecke = (g.art === 'mauer' || g.art === 'palisade') ? mauerEcken(sz, z).get(g.id) : null;
+      if (ecke) {
+        const em = ecke.minus ? gt / 2 : 0, ep = ecke.plus ? gt / 2 : 0, cw = Math.cos(g.w * RAD), sw = Math.sin(g.w * RAD);
+        zeichneGedreht(ctx, sp.cv, gx + cw * (ep - em) / 2, gy + sw * (ep - em) / 2, gb + em + ep, gt, g.w * RAD);
+      } else zeichneGedreht(ctx, sp.cv, gx, gy, gb, gt, g.w * RAD);
       if (g.hp < g.hpMax && zoom > 14 && !GEBAEUDE[g.art].begehbar) {
         const f = g.hp / g.hpMax;
         ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(gx - 0.5, gy - gt / 2 - 0.35, 1, 0.12);

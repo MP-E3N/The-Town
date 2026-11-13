@@ -6,7 +6,8 @@
  *           2) Wohngassen: zweigen im rechten Winkel (T-Kreuzung) von bestehenden Straßen ab, laufen gerade
  *              oder an der Höhenlinie entlang, halten Blocktiefe zur Nachbargasse, enden an einer anderen
  *              Straße (Schleife) oder am Rand des Wohnlands — nie mitten im Nichts.
- *           3) Plätze am Marktplatz: Bürgerhäuser mit der Front zum Platz.
+ *           3) Baufluchten im Kern (kernFluchten): vier Platzkanten + Straßenseiten, an denen Häuser Wand an Wand
+ *              stehen; Kennzahlen dazu (kernKennzahlen: Platzwand, Lücken) für Werkzeug und Test.
  * LIEST:    Karte, abgeleitete Raster, z.zone
  * SCHREIBT: nichts direkt außer über strasseHinzufuegen (planeWohngasse)
  * REGEL:    Deterministisch, ganzzahlig. Gelände lesen = Höhenunterschied je Kachel (k.hoehe) prüfen:
@@ -15,9 +16,10 @@
  */
 
 import { KARTE_B, KARTE_H } from '../data/werte.js';
+import { GEBAEUDE } from '../data/gebaeude.js';
 import { karteFuer } from './karte.js';
 import { abgeleitet } from './abgeleitet.js';
-import { kachel, abstand, winkelVon, wnorm, COS, SIN } from './lib.js';
+import { kachel, abstand, abstandStrecke, ecken, lokal, punktIn, winkelVon, wnorm, COS, SIN } from './lib.js';
 
 const BLOCK = 2; // Mindestabstand (Kacheln, Schachbrett) einer neuen Gasse zu Nachbarstraßen → Blocktiefe ≈ 2 Hausreihen
 
@@ -178,22 +180,116 @@ export function planeWohngasse(z, herr, zone, markt) {
   return best ? { punkte: ecktenRunden(best.pts), verbunden: best.verbunden } : null;
 }
 
-/** Bauplätze rund um den Marktplatz, Front zum Platz (für Bürgerhäuser). */
-export function platzRandPlaetze(z, platz, b, t) {
+/**
+ * Baufluchten im Stadtkern (Runde 10, Blockrand): Linien, an denen Häuser mit der Front stehen — die VIER Kanten des
+ * Marktplatzes (Front zum Platz) und beide Seiten jeder Straße nahe dem Markt (Front zur Straße).
+ * WARUM alle vier Platzkanten: Ein Marktplatz ist ringsum von Häusern umschlossen; offen bleibt er nur, wo Straßen
+ * einmünden (dort lehnt pruefePlatz ab). Früher gab es nur die zwei Längsseiten mit drei festen Plätzen.
+ * Jede Flucht: { platz, laenge, off, punkt(d) } — punkt(d) liefert für die Bogenlänge d den Punkt auf der Linie und
+ * die Normale n (zeigt vom Platz/von der Straße weg, dorthin steht das Haus) oder null außerhalb des Kerns.
+ * off = Abstand der Hausfront von der Linie (Platzkante bzw. Straßenmitte).
+ */
+export function kernFluchten(z, platz, markt, radius) {
   const out = [];
-  const seiten = [
-    { lu0: -platz.b / 2, lv: -platz.t / 2, laenge: platz.b, nw: 270 }, // vordere Längsseite (lokal -v)
-    { lu0: -platz.b / 2, lv: platz.t / 2, laenge: platz.b, nw: 90 },
-  ];
-  for (const sd of seiten) {
-    const normale = wnorm(platz.w + sd.nw); // zeigt vom Platz weg
-    for (let lu = sd.lu0 + b / 2 + 200; lu <= sd.lu0 + sd.laenge - b / 2 - 200; lu += b + 60) {
-      const ax = platz.x + Math.trunc((COS[platz.w] * lu - SIN[platz.w] * sd.lv) / 1024);
-      const ay = platz.y + Math.trunc((SIN[platz.w] * lu + COS[platz.w] * sd.lv) / 1024);
-      const off = Math.floor(t / 2) + 160;
-      const x = ax + Math.trunc(COS[normale] * off / 1024), y = ay + Math.trunc(SIN[normale] * off / 1024);
-      // Front (−v) zeigt zum Platz: v = Normale → W = Normale − 90
-      out.push({ x, y, w: wnorm(normale - 90), platz: true });
+  if (platz) {
+    const e = ecken(platz);
+    // Ecken-Reihenfolge von ecken(): (−u,−v) (+u,−v) (+u,+v) (−u,+v) → Kanten mit Normale −v, +u, +v, −u
+    const nw = [270, 0, 90, 180];
+    for (let i = 0; i < 4; i++) {
+      const ax = e[2 * i], ay = e[2 * i + 1], bx = e[(2 * i + 2) % 8], by = e[(2 * i + 3) % 8];
+      const L = abstand(ax, ay, bx, by), n = wnorm(platz.w + nw[i]);
+      out.push({ platz: true, laenge: L, off: 160, punkt: (d) => ({ x: ax + Math.trunc((bx - ax) * d / L), y: ay + Math.trunc((by - ay) * d / L), n }) });
+    }
+  }
+  const c = abgeleitet(z);
+  // Zusammenhängende Ketten von Segmenten im Kern (abgeleitet.js legt sie Straße für Straße entlang strassenLinie an);
+  // verlässt eine Straße den Kern und kommt wieder, sind das zwei Ketten.
+  const ketten = [];
+  let kette = null, vor = null;
+  for (const sg of c.segmente) {
+    if (abstandStrecke(markt.x, markt.y, sg.ax, sg.ay, sg.bx, sg.by) > radius) { kette = null; continue; }
+    if (!kette || !vor || vor.strasse !== sg.strasse || vor.bx !== sg.ax || vor.by !== sg.ay) { kette = []; ketten.push(kette); }
+    kette.push(sg); vor = sg;
+  }
+  for (const sgs of ketten) {
+    const lang = sgs.map((sg) => abstand(sg.ax, sg.ay, sg.bx, sg.by));
+    let L = 0;
+    for (const l of lang) L += l;
+    const hb = sgs[0].hb;
+    for (const seite of [1, -1]) {
+      out.push({
+        platz: false, laenge: L, off: hb + 110,
+        punkt: (d) => {
+          let r = d;
+          for (let i = 0; i < sgs.length; i++) {
+            if (r > lang[i] && i < sgs.length - 1) { r -= lang[i]; continue; }
+            const sg = sgs[i], l = lang[i] || 1, x = sg.ax + Math.trunc((sg.bx - sg.ax) * r / l), y = sg.ay + Math.trunc((sg.by - sg.ay) * r / l);
+            if (abstand(x, y, markt.x, markt.y) > radius) return null;
+            return { x, y, n: wnorm(winkelVon(sg.bx - sg.ax, sg.by - sg.ay) + seite * 90) };
+          }
+          return null;
+        },
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Kennzahlen des Stadtkerns (nur lesen; für tools/stadtplan.mjs und den Test):
+ * - Platzwand: Der Platzrand wird alle 0,25 Kacheln abgetastet. „Haus“ = eine Hausfront liegt ≤ 0,6 Kacheln entfernt,
+ *   „Gebäude“ = Haus oder ein anderes Gebäude (Rathaus, Kirche, Speicher …), „Einmündung“ = dort mündet eine Straße.
+ *   WARUM Einmündungen getrennt: Dort darf (und soll) die Platzwand offen sein.
+ * - Zeilen im Kern (≤ kern Milli vom Markt): je Haus und Seite der Abstand der vorderen Ecke zum nächsten Gebäude.
+ *   ≤ 0,35 Kacheln = Wand an Wand; Straße oder Platz daneben = Zeilenende (ende); sonst Nachbar 0,35–1,5 Kacheln =
+ *   Lücke (zu schmal für ein Haus, sieht aus wie eine Zahnlücke); noch weiter = freie Seite (Zeile wächst dort weiter).
+ */
+export function kernKennzahlen(z, herr, kern = 11000) {
+  const c = abgeleitet(z), platz = z.gebaeude[z.herren[herr].markt];
+  const out = { punkte: 0, haus: 0, gebaeude: 0, einmuendung: 0, seiten: 0, wand: 0, ende: 0, luecke: 0 };
+  if (!platz) return out;
+  const haeuser = z.gebaeude.filter((g) => g.art === 'haus' && g.zustand !== 'weg' && g.besitzer === herr);
+  const andere = z.gebaeude.filter((g) => g.zustand !== 'weg' && g.art !== 'haus' && g.art !== 'platz' && !GEBAEUDE[g.art].mauer && abstand(g.x, g.y, platz.x, platz.y) < 12000);
+  const front = (g) => { const a = lokal(g, -Math.trunc(g.b / 2), -Math.trunc(g.t / 2)), b = lokal(g, Math.trunc(g.b / 2), -Math.trunc(g.t / 2)); return [a.x, a.y, b.x, b.y]; };
+  const fronten = haeuser.filter((g) => abstand(g.x, g.y, platz.x, platz.y) < 9000).map(front);
+  const e = ecken(platz);
+  for (let i = 0; i < 8; i += 2) {
+    const j = (i + 2) % 8, n = Math.max(1, Math.round(abstand(e[i], e[i + 1], e[j], e[j + 1]) / 250));
+    for (let s = 0; s < n; s++) {
+      const px = e[i] + Math.trunc((e[j] - e[i]) * s / n), py = e[i + 1] + Math.trunc((e[j + 1] - e[i + 1]) * s / n);
+      out.punkte++;
+      let mund = false;
+      for (const sg of c.segmente) if (abstandStrecke(px, py, sg.ax, sg.ay, sg.bx, sg.by) <= sg.hb + 250) { mund = true; break; }
+      if (mund) { out.einmuendung++; continue; }
+      let h = false;
+      for (const f of fronten) if (abstandStrecke(px, py, f[0], f[1], f[2], f[3]) <= 600) { h = true; break; }
+      let g = h;
+      if (!g) for (const o of andere) if (punktIn(o, px, py, 600)) { g = true; break; }
+      if (h) out.haus++;
+      if (g) out.gebaeude++;
+    }
+  }
+  // Nachbar = jedes Gebäude (auch Rathaus, Kirche, Speicher: sie gehören zur Platzwand). Gemessen wird, wie weit die
+  // vordere Hausecke vom Körper des Nachbarn entfernt ist — so zählen auch Eckhäuser über Eck und versetzte Tiefen.
+  const nachbarn = haeuser.concat(andere);
+  for (const H of haeuser) {
+    if (abstand(H.x, H.y, platz.x, platz.y) >= kern) continue;
+    for (const sd of [-1, 1]) {
+      // Probe 0,05 Kacheln außerhalb der eigenen Seitenwand, in Stufen nach außen
+      const q = lokal(H, sd * (Math.trunc(H.b / 2) + 50), -Math.trunc(H.t / 2) + 50);
+      let bd = Infinity;
+      for (const G of nachbarn) {
+        if (G === H || abstand(G.x, G.y, H.x, H.y) > 9000) continue;
+        for (const r of [350, 1500]) if (r < bd && punktIn(G, q.x, q.y, r)) { bd = r; break; }
+      }
+      out.seiten++;
+      if (bd <= 350) { out.wand++; continue; }
+      // Liegt neben der Ecke eine Straße oder der Platz, endet die Zeile dort (Einmündung, Platzecke) — keine Lücke
+      const s = lokal(H, sd * (Math.trunc(H.b / 2) + 500), -Math.trunc(H.t / 2) + 300);
+      let ende = punktIn(platz, q.x, q.y, 600);
+      for (const sg of c.segmente) if (!ende && abstandStrecke(s.x, s.y, sg.ax, sg.ay, sg.bx, sg.by) <= sg.hb + 400) ende = true;
+      if (ende) out.ende++;
+      else if (bd <= 1500) out.luecke++;
     }
   }
   return out;

@@ -17,7 +17,8 @@ import { summieren } from '../sim/lager.js';
 import { begehbar, findePfad } from '../sim/pfad.js';
 import { kachel } from '../sim/lib.js';
 import { karteFuer } from '../sim/karte.js';
-import { grundstueck } from '../sim/baumeister.js';
+import { grundstueck, findePlatz, gebaeudeAnlegen, flurAuswertung } from '../sim/baumeister.js';
+import { kernKennzahlen } from '../sim/stadtplaner.js';
 import { ueberlappt, abstandStrecke, winkelVon, strassenLinie, SIN, COS } from '../sim/lib.js';
 import { strasseHinzufuegen } from '../sim/strassen.js';
 import { gebaeudeZerstoert } from '../sim/militaer.js';
@@ -330,6 +331,35 @@ for (const mart of ['mauer', 'palisade']) {
   gebaeudeZerstoert(z2, hof2);
   for (let i = 0; i < 600 * 5; i++) tick(z2, []);
   pruefe('Ohne Hilfe: Felder verwildert, Ruine aufgegeben', hof2.zustand === 'weg' && hof2.felder.every((id) => z2.felder[id].weg));
+}
+
+// 4i) Blockrand (Runde 10, Nutzerbild): Der Baumeister säumt den Marktplatz ringsum mit Häusern (Front zum Platz,
+//     offen nur, wo Straßen einmünden) und setzt die Häuser im Kern Wand an Wand. 10 Häuser nach der Startstadt.
+for (const seed of [42, 7]) {
+  const z = erzeugeZustand(seed);
+  for (let i = 0; i < 10; i++) {
+    const p = findePlatz(z, 0, 'haus');
+    if (!p) break;
+    gebaeudeAnlegen(z, 0, 'haus', p.o, { sofort: true, wohn: p.wohn });
+  }
+  const kk = kernKennzahlen(z, 0), rand = Math.max(1, kk.punkte - kk.einmuendung);
+  pruefe(`Markt Seed ${seed}: Häuser säumen den Platz (Hausfront ≥ 55 %, Gebäude ≥ 85 % des Platzrands ohne Einmündungen)`,
+    kk.haus * 100 >= rand * 55 && kk.gebaeude * 100 >= rand * 85, `Häuser ${Math.round(kk.haus * 100 / rand)} %, Gebäude ${Math.round(kk.gebaeude * 100 / rand)} %, Einmündungen ${kk.einmuendung}/${kk.punkte}`);
+  pruefe(`Kern Seed ${seed}: Häuser stehen Wand an Wand (≥ die Hälfte der Hausseiten, Zahnlücken ≤ 1 je 3 Häuser)`,
+    kk.wand * 2 >= kk.seiten && kk.luecke * 6 <= kk.seiten, `Wand ${kk.wand}/${kk.seiten}, Zeilenende ${kk.ende}, Lücken ${kk.luecke}`);
+}
+
+// 4j) Runde 11: Flur-Auswertung zählt jede Acker-/Weidekachel genau einmal; Höfe nutzen freies Nachbarland (Nachwachsen)
+{
+  const z = lauf(42, klugerBot(), 20).z;
+  const fa = flurAuswertung(z);
+  let zonen = 0;
+  const k = karteFuer(42);
+  for (let i = 0; i < z.zone.length; i++) if ((z.zone[i] === 2 || z.zone[i] === 3) && !k.wasser[i]) zonen++;
+  const summe = fa.acker.reduce((a, b) => a + b, 0) + fa.weide.reduce((a, b) => a + b, 0);
+  pruefe('Flur-Auswertung: jede Acker-/Weidekachel genau einmal eingeordnet', summe === zonen, `${summe} von ${zonen}`);
+  const genutzt = Math.round(fa.acker[1] * 100 / Math.max(1, fa.acker[1] + fa.acker[2] + fa.acker[3] + fa.acker[4] + fa.acker[7]));
+  pruefe('Höfe nutzen freies Ackerland (Felder wachsen nach, Seed 42 Tag 20 ≥ 50 % genutzt, vor Runde 11: 42 %)', genutzt >= 50, genutzt + ' %');
 }
 
 // 5) Balance

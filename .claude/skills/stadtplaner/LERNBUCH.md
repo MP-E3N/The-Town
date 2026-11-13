@@ -207,3 +207,93 @@ Neuer Test: kein Grundstück überlappt ein anderes Gebäude (0 Treffer).
 
 **Lehre:** Was im Bild zum Haus gehört (Garten, Hof), muss auch in der Simulation zum Grundstück gehören — sonst
 plant der Baumeister darauf.
+
+
+## Runde 9 (2026-11-13) — runde Straßenecken, Kirche in der Flucht, Trapezfelder
+
+**Beobachtung (Nutzer):** Straßen zu eckig (will Rundungen, aber pro Ecke selbst bestimmen); Kirche „schief“ — sie war
+genau geostet (w 270), stand aber zwischen schräg laufenden Gassen; Felder nur Rechtecke, Keile an schrägen Wegen und
+am Ufer blieben leer.
+
+**Ursache:** Die Darstellung tastete Straßen alle 0,4 Kacheln ab — Knicke blieben Knicke. Die Kirche suchte nur Winkel
+um 270°, unabhängig von Markt und Straße. Felder wuchsen nur als achsparallele Rechtecke im Raster des Hofs.
+
+**Änderung:**
+- `strassenLinie(s)` (sim/lib.js): jede innere Ecke → quadratischer Bogen (rund 35 % der kürzeren Nachbarstrecke,
+  max. 3,5 Kacheln; stark 49 %, max. 9; eckig bleibt). EINE Linie für Raster, Kollision UND Bild. `s.rund[i]`.
+- Kirche: nur Winkel parallel/quer zu Markt oder nächster Straße, davon der östlichste; Marktflucht −1200 Bonus.
+  Größere Kirche (3,2 × 5,8) braucht Suchradius bis 13 Kacheln und Portal ≤ 3 (Seed 42 fand sonst keinen Platz).
+- `zwickelFuellen()`: nach dem Rechteck-Wachsen Ecken einzeln hinausschieben → konvexe Trapeze (`f.poly`).
+
+**Messung:** Seed 42 Tag 12 (kluger Bot): 14 von 16 Feldern sind Trapeze, 0 Überlappungen. Kirche auf allen 7 geprüften
+Seeds vorhanden (42: w 0 = Marktflucht).
+
+**Lehre:** Was der Spieler als Form sieht (Kurve, Trapez), muss die Simulation als dieselbe Form kennen — sonst plant
+der Baumeister in Lücken, die es im Bild nicht gibt. Und: Ausrichtung an der Umgebung schlägt Himmelsrichtung.
+
+## 2026-11-13 — Runde 10: „Häuserketten — der Platz sollte noch viel besser genutzt werden“
+
+**Beobachtung (Nutzer, Bild Seed 42, Winter):** Zwischen rechter Platzkante und den ersten Häusern ein leerer Graskeil;
+die Häuser stehen 4–6 Kacheln entfernt an den abgehenden Straßen. Rote Linien: Zeile direkt an der Platzkante, Zeilen
+an beiden Straßen bis an den Platz heran, Block schließen.
+
+**Ursachen:**
+1. `platzRandPlaetze()` kannte nur die zwei Längsseiten mit je drei festen Plätzen (b + 0,06 Schritt) — die Schmalseiten
+   (dort, wo im Nutzerbild keine Straße mündet) bekamen nie ein Haus. Seed 7 und 1234: 0–2 % Hausfront am Platz.
+2. Bewertung: Zeilenfortsetzung −7000 schlug JEDEN näheren Platz. War das erste Haus weit draußen, wuchs die Zeile von
+   dort nach außen statt vom Platz her.
+3. Straßenplätze nur alle ~1,5 Kacheln an festen Stellen; eine Zeile konnte nicht „bis an den Platz heranrücken“.
+4. Eine gewürfelte Hausgröße je Kandidat: am Hang („zu steil“ über das Grundstück) fiel der Platz ganz weg statt ein
+   flacheres Haus zu nehmen.
+
+**Änderung:**
+- `kernFluchten()` (sim/stadtplaner.js): Baufluchten im Kern = vier Platzkanten (Front zum Platz) + beide Seiten jeder
+  Straßenkette im Kern (Front zur Straße). Ersetzt `platzRandPlaetze()`.
+- `kernPlaetze()` (sim/baumeister.js): jede Flucht alle 0,2/0,25 Kacheln abtasten; Kandidat nur, wo die Nachbarprobe
+  belegt ist (Nachbarhaus, Platz, Einmündung, Rathaus …) oder die Platzecke erreicht ist → dort 3 × 0,05 heranrücken.
+  Größenliste: gewürfelt → flacher → kleinstes Bürgerhaus → 1,0 breit; Schmalhaus 0,7 nur in Zahnlücken (links und
+  rechts binnen 0,3 ein Hindernis). Im Kern keine Zufallsdrehung. Eckhaus darf 0,3 über die Platzecke ragen.
+- `findeHausPlatz()`: Wert = Abstand zum Markt + Zufall − 6000 Platzfront − 3000 Anschluss + 4000 Kernplatz ohne Anschluss.
+- Messwerkzeug: `kernKennzahlen()` (Platzwand-Abtastung alle 0,25 Kacheln, Hausseiten Wand an Wand / Zeilenende /
+  Lücke), Zeile „Wohnhäuser: Plätze je Hauskachel“, 4. Argument = so viele Häuser setzen, wie der Baumeister wählt,
+  `P` für den Platz in der Textkarte. Test 4i: Platzsäumung + Wand an Wand (Seeds 42, 7).
+
+**Messung (Startstadt + 10 Häuser, `node tools/stadtplan.mjs S 0 0 10`):**
+| Seed | Häuser gesetzt | Platzwand Häuser / Gebäude | Wand an Wand | Lücken | Dichte |
+|---|---|---|---|---|---|
+| 42 | 9 → 10 (vorher 3 neue Gassen nötig) | 57 / 72 % → 86 / 98 % | 16/28 → 23/30 | 4 → 3 | 1,09 → 1,69 |
+| 7 | 6 → 10 | 2 / 48 % → 61 / 92 % | 10/22 → 17/30 | 3 → 5 | 0,76 → 1,32 |
+Kluger Bot Tag 20 (`S 20 1`): 42 Platzwand 53 → 64 %, 7: 2 → 57 %; Plätze je Hauskachel 2,9 → 4,0 (42), 3,3 → 3,6 (7).
+Die alte „Dichte“ fiel dort (0,90 → 0,75), weil der Bot eine zweite Kaserne + Anbindung ins Wohnland setzt — darum die
+neue Hauskachel-Zahl. Bot-Siege 42@24 7@26 99@36 5@23 1234@28 (vorher 24/24/35/20/offen@60). findePlatz Haus 0,6 → 5 ms.
+
+**Lehren:**
+- Erst die Reihenfolge der Bewertung prüfen: Ein großer Bonus („Zeile fortsetzen“) darf die Grundordnung (nah am Markt
+  zuerst) nicht umdrehen — sonst wächst die Stadt vom Rand her.
+- „Wand an Wand“ entsteht nicht durch feste Raster, sondern durch Heranrücken an ein Hindernis (Abtasten + Kontakt).
+- Hangflächen: lieber ein flacheres Haus als gar keins — Größen als Liste probieren.
+- Kennzahlen am Platz brauchen eigene Kategorien (Einmündung, Zeilenende), sonst zählen Platzecken als Lücken.
+- Der Bot baut bis Tag 20 kaum Häuser (Höfe decken das Wohnen) — Wachstum misst man mit dem 4. Werkzeug-Argument.
+
+**Offen:** Block hinten schließen (Bogen im Nutzerbild = Gasse quer zwischen den abgehenden Straßen) ist nicht gebaut;
+Eckhäuser an spitzen Straßenwinkeln stehen noch leicht verdreht (Lücken Seed 7/1234); Startstadt Seed 42 hat oben drei
+schmale Häuser (Hang). Bestehende Spielstände behalten ihre alten Häuser.
+
+## Runde 10 (2026-11-13, Projektleitung) — zu viele Straßenpunkte
+**Beobachtung (Nutzer, Bild):** Im Bearbeiten-Werkzeug hat eine generierte Straße über 10 dicht gedrängte Punkte.
+**Ursache:** `punkteAusPfad`/`glaetten` (Chaikin) und `begradigen` (Bogenpunkte) speicherten jede Zwischenstelle.
+**Änderung:** `vereinfachen()` (Douglas-Peucker, 0,35 Kacheln) in `strasseHinzufuegen` — gespeichert werden nur echte
+Ecken; die Rundung kommt aus `strassenLinie`.
+**Messung:** Seed 42: 111 → 43 Punkte (max 26 → 6), Seed 7: 159 → 60. Knicke (gemessen an der Kontrolllinie) 0,25 → 0,33.
+**Lehre:** Seit es `strassenLinie` gibt, gehört Glättung nicht mehr in die gespeicherten Punkte. Die Kennzahl „Knicke“
+misst jetzt die Kontrolllinie — sie steigt, obwohl das Bild runder ist; künftig an `strassenLinie` messen.
+
+## Runde 11 (2026-11-13, Projektleitung) — Hang zum Fluss ohne Felder
+**Beobachtung (Nutzer, Bild):** Neben einem Hof liegt bis zum Fluss freies Ackerland; keine Felder.
+**Ursache (gemessen):** Nicht der Hang (≤ 10 Kacheln „zu steil“). (1) Felder wuchsen nur beim Anlegen des Hofs;
+(2) seitlich nur im Hufenstreifen (±4,6 Kacheln) — reserviert für einen nächsten Hof, der nie kam; (3) neue Höfe fanden
+an den Wegen keinen Platz (0 gültige Plätze auf 3 Karten: belegt, Feld dahinter außerhalb der Zone, Hof zu steil).
+**Änderung:** `felderNachwachsen` (2× täglich ein Hof, Streifen + 4,6), mehr Startfeld-Stellen, Hof am Hang bis 60,
+`flurAuswertung` + `hofPlatzDiagnose` (nur lesend), ehrliche Meldung.
+**Messung:** Seed 42 Tag 20: Acker genutzt 42 → 54 %, Felder 305 → 392 Kacheln; Bot 99: Sieg Tag 36 → 23.
+**Lehre:** Eine Platzhalter-Regel („Streifen für den nächsten Hof“) braucht ein Verfallsdatum — sonst blockiert sie für immer.

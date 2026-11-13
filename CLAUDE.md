@@ -34,7 +34,8 @@ Gleicher Unterbau wie die Schwesterprojekte `..\Stadtwacht`, `..\Kronwege`, `..\
 ## Kommentare
 Deutsch. Dateikopf mit ZWECK / LIEST / SCHREIBT / REGEL (/ DEBUG). Nicht Offensichtliches mit **WARUM**.
 
-## Skills
+## Skills und Team
+- `.claude/skills/entwicklerteam` — **Ablauf jeder Runde** (Kickoff, Testrunde, Retrospektive, Lernbücher). Team: `.claude/team/TEAM.md`.
 - `.claude/skills/stadtplaner` — für alles rund um Straßen, Gassen, Bauplätze, Markt, Dichte. Lernbuch pflegen.
 
 ## Commits

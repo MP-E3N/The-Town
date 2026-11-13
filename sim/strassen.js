@@ -42,9 +42,34 @@ export function glaetten(roh) {
   return out;
 }
 
+/**
+ * Linienzug auf seine echten Ecken verkleinern (Douglas-Peucker, Toleranz in Milli-Kacheln). Endpunkte bleiben.
+ * WARUM (Runde 10): Geglättete Wege trugen Dutzende Punkte (Chaikin + Bogenpunkte) — im Bearbeiten-Werkzeug war das
+ * unbedienbar. Die Rundung zeichnet und rechnet jetzt `strassenLinie` (lib.js) aus den wenigen Ecken.
+ */
+export function vereinfachen(p, toleranz = 350) {
+  const n = p.length / 2;
+  if (n <= 2) return p;
+  const behalten = new Uint8Array(n); behalten[0] = 1; behalten[n - 1] = 1;
+  const stapel = [[0, n - 1]];
+  while (stapel.length) {
+    const [a, b] = stapel.pop();
+    let best = -1, bd = toleranz;
+    for (let i = a + 1; i < b; i++) {
+      const d = abstandStrecke(p[2 * i], p[2 * i + 1], p[2 * a], p[2 * a + 1], p[2 * b], p[2 * b + 1]);
+      if (d > bd) { bd = d; best = i; }
+    }
+    if (best >= 0) { behalten[best] = 1; stapel.push([a, best], [best, b]); }
+  }
+  const out = [];
+  for (let i = 0; i < n; i++) if (behalten[i]) out.push(p[2 * i], p[2 * i + 1]);
+  return out;
+}
+
 /** herkunft (nur zum Messen/Debuggen): handel, burgweg, gasse, anschluss, erschliessung, anbindung, herr */
 export function strasseHinzufuegen(z, punkte, art, herkunft = '') {
   if (punkte.length < 4) return null;
+  punkte = vereinfachen(punkte);
   const s = { id: z.strassen.length, punkte, breite: BREITE[art], art, herkunft };
   z.strassen.push(s);
   // Neue Straße: offene Gassenenden dürfen erneut prüfen, ob sie jetzt anschließen können.

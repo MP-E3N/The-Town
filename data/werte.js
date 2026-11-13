@@ -63,14 +63,17 @@ export const MILITAER = {
 
 export const FELD = {
   reifeTicks: 5000,
-  saeArbeit: 200,
-  ernteArbeit: 300,
+  // Runde 9: 4 statt 2 Bauern je Hof → Arbeit verdoppelt (gleich schnell bei voller Besetzung)
+  saeArbeit: 400,
+  ernteArbeit: 600,
   ertrag: 60,
   /**
    * Feldpflege zwischen Saat und Ernte (hacken, jäten, Steine lesen, Vögel verscheuchen): 1 Bauer je Hof.
    * Pflege 0..100 je Feld; so viele Arbeiter-Ticks je Pflegepunkt; volle Pflege = so viel % mehr Ertrag.
    */
-  pflegeTicks: 25,
+  pflegeTicks: 50,
+  /** So viele Bauern eines Hofs pflegen zwischen Saat und Ernte (die übrigen helfen anderswo). */
+  pflegeBauern: 2,
   pflegeBonus: 25,
   /**
    * Felder wachsen nach dem Anlegen, bis Straße, Nachbar, Zonenrand oder Grenze erreicht ist (Flickenteppich).
@@ -80,6 +83,12 @@ export const FELD = {
   basis: 10530000,
   maxFeld: 36000000,
   maxHof: 100000000,
+  /** Steilste Kachel (Höhenunterschied zu Nachbarn), auf der noch Acker/Weide liegen darf. Gilt für Baumeister UND Flur-Anzeige. */
+  steilMax: 70,
+  /** Zusammenhängende freie Fläche unter so vielen Kacheln ist für einen neuen Hof zu klein (Rest). */
+  restKacheln: 14,
+  /** Nachwachsen bestehender Höfe (zweimal am Tag einer): so viel breiter darf der Hufenstreifen dabei werden. */
+  nachwachsenBreiter: 4600,
 };
 
 /**
