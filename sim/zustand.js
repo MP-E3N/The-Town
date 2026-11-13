@@ -189,6 +189,8 @@ export function erzeugeZustand(seed) {
   // Startlager setzen (Rodung beim Aufbau zählt nicht): Burg und erster Speicher getrennt.
   for (const g of z.gebaeude) if (g.inhalt) g.inhalt = leer();
   burg.inhalt = { ...START.burg };
+  // Runde 13: Die Burg ist von Anfang an das private Lager des Herrn (Startgold, Waffen, etwas Nahrung)
+  burg.gesperrt = true;
   const speicher = z.gebaeude.find((g) => g.art === 'speicher');
   const ziel = speicher || burg;
   for (const w in START.speicher) ziel.inhalt[w] += START.speicher[w];

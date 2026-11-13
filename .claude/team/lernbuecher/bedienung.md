@@ -25,3 +25,10 @@ erst sichtbar. Ein neues Werkzeug immer an einer GENERIERTEN Straße ausprobiere
 **Änderung:** Stadt-Seite: „Ackerland x % genutzt · Reserve y“ mit Tooltip je Klasse + Satz „wann kommt ein neuer Hof“;
 Z färbt die Klassen auf der Karte. Beide aus `flurAuswertung` — dieselben Grenzen wie der Baumeister.
 **Lehre:** Wenn das Spiel selbst entscheidet (Baumeister), braucht der Spieler eine Zeile „was passiert als Nächstes und warum“.
+
+### 2026-11-13 — Runde 12
+**Änderung:** Leiste zeigt das Lager des Herrn mit kleinem Tageszuwachs, Stadt nur als Ampel (Tage Vorrat); „Steuer“ →
+„Abgaben an dich“ mit Prozenten im Tooltip; Kaufen/Kornspeicher im Burg-Fenster; Kornspeicher-Knopf erscheint rechts
+nur, wenn die Stadt knapp ist.
+**Lehre:** Wenn ein Befehl etwas verbietet (Rathaus abreißen, Stadt → Burg umlagern), muss auch die Oberfläche es gar
+nicht erst anbieten — sonst klickt man ins Leere.

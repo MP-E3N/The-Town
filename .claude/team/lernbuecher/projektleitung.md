@@ -22,3 +22,17 @@ damit der Nutzer früh widersprechen kann.
 **Änderung:** Team-Meeting mit 4 Experten parallel (nur lesend, je eine Fachfrage, Wortgrenze) → Synthese mit offenen
 Entscheidungen. Nichts gebaut, bevor der Nutzer zustimmt.
 **Lehre:** Meetings mit klarer Fachfrage + Wortgrenze liefern in ~1 Minute brauchbare, unterschiedliche Sichten.
+
+### 2026-11-13 — Runde 12
+**Beobachtung:** Nutzer sagte nur „Ja, Stufe 1 bauen“, ohne die offenen Fragen (Anteile, Burghof) zu beantworten.
+**Änderung:** Team-Vorschlag als Annahme ins Kickoff-Protokoll, Anteile per Bot-Durchlauf festgelegt, in der Antwort genannt.
+**Lehre:** Unbeantwortete Detailfragen nicht blockieren lassen — mit dem Vorschlag bauen, aber die gewählten Werte offen
+nennen, damit der Nutzer nachsteuern kann.
+
+### 2026-11-13 — Runde 13
+**Beobachtung:** Runde 12 („Herr & Stadt“: zwei Töpfe, Zehnt-Prozente, Fuhren, Kaufen) gefiel nach dem Ausprobieren
+nicht: „Macht keinen Sinn … einfacher: Burg = mein privates Lager, das ich sperren kann.“
+**Ursache:** Der Nutzerwunsch hatte einen einfachen Kern (ein Lager, aus dem die Stadt nicht nimmt); das Meeting hat
+daraus ein vollständiges Abgabensystem gemacht. Vier Fachleute = vier Erweiterungen.
+**Lehre:** Im Meeting immer auch fragen: „Was ist die KLEINSTE Version, die den Satz des Nutzers erfüllt?“ — und die
+zuerst anbieten. Sicherungspunkt vor großen Umbauten hat sich bewährt (Zurückbauen = ein Befehl).

@@ -10,6 +10,7 @@ import { befehlAnwenden, auftragPruefen } from '../sim/befehle.js';
 import { GEBAEUDE } from '../data/gebaeude.js';
 import { LAND_RADIUS, KARTE_B, KARTE_H } from '../data/werte.js';
 import { stadtStatus } from '../sim/baumeister.js';
+import { verfuegbar } from '../sim/lager.js';
 
 /** Sucht in Ringen um (x,y) einen gültigen Platz für einen Auftrag. */
 export function platzFuerAuftrag(z, art, x, y, rMax = 12) {
@@ -75,18 +76,18 @@ export function klugerBot() {
       const o = platzFuerAuftrag(z, 'schmiede', markt.x, markt.y, 16);
       if (o) { senden({ typ: 'bauen', art: 'schmiede', ...o }); plan.schritt = 2; return; }
     }
-    if (plan.schritt === 2 && h.lager.stein >= 20 && h.lager.gold >= 40 && h.lager.holz >= 30) {
+    if (plan.schritt === 2 && verfuegbar(h, 'stein', 'herr') >= 20 && verfuegbar(h, 'gold', 'herr') >= 40 && verfuegbar(h, 'holz', 'herr') >= 30) {
       const o = platzFuerAuftrag(z, 'kaserne', (burg.x + markt.x) / 2, (burg.y + markt.y) / 2, 18);
       if (o) { senden({ typ: 'bauen', art: 'kaserne', ...o }); plan.schritt = 3; return; }
     }
-    if (plan.schritt === 3 && h.lager.stein >= 15 && h.lager.holz >= 10) {
+    if (plan.schritt === 3 && verfuegbar(h, 'stein', 'herr') >= 15 && verfuegbar(h, 'holz', 'herr') >= 10) {
       const hof = z.gebaeude.find((g) => g.art === 'hof' && g.zustand === 'fertig');
       const o = hof && platzFuerAuftrag(z, 'turm', hof.x, hof.y, 8);
       if (o) senden({ typ: 'bauen', art: 'turm', ...o });
       plan.schritt = 4;
       return;
     }
-    if (plan.schritt === 4 && h.lager.stein >= 20 && h.lager.gold >= 40 && h.lager.holz >= 40) {
+    if (plan.schritt === 4 && verfuegbar(h, 'stein', 'herr') >= 20 && verfuegbar(h, 'gold', 'herr') >= 40 && verfuegbar(h, 'holz', 'herr') >= 40) {
       const st = stadtStatus(z, 0);
       if (st.soldaten >= st.plaetze - 6) {
         const o = platzFuerAuftrag(z, 'kaserne', markt.x, markt.y, 18);

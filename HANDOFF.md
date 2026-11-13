@@ -2,12 +2,13 @@
 
 Übergabe für die nächste Sitzung. Überblick über das ganze Projekt: `PROJEKT.md`. Konzept: `KONZEPT.md`.
 
-## Stand (2026-11-13, nach Runde 11)
+## Stand (2026-11-13, nach Runde 13)
 - Git: `origin` = github.com/MP-E3N/The-Town, Branch `main`. Runde 9 Teil 1 (Punkte 2–7) lokal committet 19e88f5 +
   Tag `sicherung-vor-arbeitern` (Sicherung auf Nutzerwunsch, NICHT gepusht). Teil 2 (Arbeiterzahlen) liegt danach
   uncommittet bzw. im nächsten Commit. Zurück zur Balance vor Runde 9: `git checkout sicherung-vor-arbeitern -- data/ sim/wirtschaft.js sim/baumeister.js`.
-- Runden 10 + 11 uncommittet (zusammen mit Runde 9 Teil 2). Tests: `node tests/sim.test.js` → „ALLES GRUEN“ (≈ 8 s), 65 Prüfungen.
-- **Wartet auf Nutzer:** Entscheidung zum Vorschlag „Herr & Stadt / Handwerk / Stände“ (Protokoll Runde 11) — erst danach bauen.
+- Runden 9b–11 lokal committet 8eafd1e (Tag `sicherung-vor-herr-und-stadt`, nicht gepusht). Runde 12 VERWORFEN
+  (Patch in `.claude/team/archiv/`), Runde 13 uncommittet. Tests: „ALLES GRUEN“ (≈ 9 s), 70 Prüfungen.
+  Bot 42@25 7@27 99@26 5@26 1234@24.
 - (Runde 9:) 57 Prüfungen. Kluger Bot gewinnt 5/5, seit den Arbeiterzahlen
   aber später: vorher 42@23 7@23 99@29 5@21 1234@21 → nachher 42@28 7@24 99@39 5@23 1234@35. „Nichtstun“ gewinnt nicht.
 - Nutzer hat zweimal gespielt: „guter Wuselfaktor“, „macht auf jeden Fall schon Laune“.
@@ -17,7 +18,9 @@
 ## Zu Beginn der nächsten Sitzung
 1. `fehler.log` lesen (Browser-Fehler aus den Spieltests des Nutzers; Datei ist in `.gitignore`).
 2. Bei Straßen/Gassen/Häusern/Markt: Skill `stadtplaner` benutzen, `LERNBUCH.md` lesen, mit `tools/stadtplan.mjs` messen.
-3. Nutzer fragen (Runde 11): Vorschlag Herr & Stadt annehmen? Anteile (Nahrung 15 %, Holz 10 %, Stein/Eisen 30 %)?
+3. Nutzer fragen (Runde 13): Passt die Burg als privates Lager so (gesperrt zu Beginn, Einlagern über Umlagern,
+   Militär zahlt zuerst aus der Burg)? Fehlt „je Ware sperren“? Danach evtl. Handwerk/Konsumgüter (Runde-11-Vorschlag, einfach halten!).
+3b. Nutzer fragen (Runde 11): Vorschlag Herr & Stadt annehmen? Anteile (Nahrung 15 %, Holz 10 %, Stein/Eisen 30 %)?
    Burghof ja/nein? Erstes Konsumgut Tuch oder Bier? „Bitte an den Rat“? Ist die Flur-Anzeige verständlich?
 3a. Nutzer fragen (Runde 10): Gefallen die Häuserzeilen am Markt? Soll der Block hinten mit einer Quergasse geschlossen
    werden? Zinnen jetzt richtig? Wie fühlt sich die Arbeit mit dem Team an (Protokolle lesbar, zu viel/zu wenig)?
@@ -37,6 +40,29 @@
    bequem? (Runde 5 im Browser nur über simulierte Eingaben geprüft, nicht live mit der Maus gespielt.)
 
 ## Verlauf der Runden
+### Runde 13 — Burg als privates Lager (Runde 12 verworfen)
+Protokoll: `.claude/team/protokolle/2026-11-13-runde13.md`.
+- Nutzer nach Ausprobieren: zwei getrennte Lager + Zehnt macht keinen Sinn → einfacher: Burg = privates Lager.
+- Runde 12 zurückgebaut (Code vom Tag `sicherung-vor-herr-und-stadt`), Diff in `.claude/team/archiv/runde12-herr-und-stadt.patch`.
+- `g.gesperrt` (nur Burg, Start: gesperrt), Befehl `lagerSperre`; sim/lager.js: `wer` = 'stadt' | 'herr',
+  `verfuegbar()`, `h.lager` (Stadt nutzbar) + `h.privat` (gesperrt). Stadt (Baumeister, Essen, Heizen) nimmt nichts aus
+  der gesperrten Burg, Lieferungen gehen nicht hinein; der Herr (Aufträge, Mauern, Rekruten, Sold, Schmiede, Garnison)
+  nimmt zuerst aus der Burg, dann aus der Stadt. Einlagern über Umlagern. Leiste: Gesamt + „🔒n“ privat.
+
+### Runde 12 (VERWORFEN in Runde 13) — Stufe 1 „Herr & Stadt“
+Protokoll mit Durchlauf und Prüfer-Befunden: `.claude/team/protokolle/2026-11-13-runde12.md`.
+- Zwei Lagertöpfe (sim/lager.js): Burg = Herr (`h.kammer`), Speicher + Rathaus = Stadt (`h.lager`). Rat/Baumeister,
+  Essen, Heizen aus der Stadt; Aufträge, Mauern, Rekruten, Sold, Wiederaufbau aus der Kammer; Steuergold in die Burg.
+- Abgabe am Tagesende (`abgabeEinziehen`, sim/wirtschaft.js): STEUER[stufe].anteil in Prozent der Tageslieferungen
+  ins Stadtlager, als Fuhre zur Burg. Stufen mild/üblich/hart (üblich: Nahrung 8, Holz 10, Stein 40, Eisen 50 %).
+- Burghof (`g.herrenhof`, Starthof nahe der Burg) und Schmiede liefern ganz in die Burg (`liefertAnHerrn`).
+- Garnison isst aus der Kammer; fehlt Korn, kauft der Burgvogt auf dem Markt (`vonStadtKaufen`, HERR.kauf).
+- Befehle `kaufen` (Burg-Fenster) und `kornspeicher`; Stadt → Burg umlagern verboten; Rathaus/Kirche nicht abreißbar;
+  ohne Stadtlager verdirbt Stadtware (kein Rückfall in die Burg).
+- UI: Leiste = Kammer + Tageszuwachs + Stadt-Ampel; Stadt-Seite „Stadtlager“, „Dein Anteil gestern“, „Abgaben an dich“.
+- Bots kaufen Holz/Stein/Eisen der Stadt ab. Siegtage 27/39/37/39/36 (vorher 25/26/23/20/24): das Spiel ist zäher.
+- Stadtkasse sammelt Gold (aus Käufen des Herrn), gibt es aber noch nicht aus — Stufe 2 (Handwerk/Marktzoll).
+
 ### Runde 11 — Flur-Anzeige, Felder wachsen nach, Team-Meeting Herr & Stadt
 Protokoll: `.claude/team/protokolle/2026-11-13-runde11.md` (mit Meeting-Ergebnis und Vorschlag).
 - **fehler.log** leer, Leitung per Testzeile geprüft.

@@ -1,0 +1,895 @@
+diff --git a/PROJEKT.md b/PROJEKT.md
+index 67b7008..b7e6e17 100644
+--- a/PROJEKT.md
++++ b/PROJEKT.md
+@@ -29,13 +29,17 @@ powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr
+ - **Jahreszeiten:** Felder werden im Frühling gesät, im Spätsommer geerntet; der Winter lebt vom Vorrat.
+ - **Wirtschaft:** Bauernhof (+Felder), Viehhof (+Weide), Fischer, Holzfäller (fällt echte Bäume, forstet auf),
+   Steinbruch, Erzgrube, Waffenschmiede (Speere oder Bögen). Träger und Erntewagen laufen echte Wege.
+-- **Lager:** Waren liegen in Speicher und Burg; verbraucht wird aus dem nächsten Lager; Speicher können brennen.
++- **Lager:** Waren liegen in Speicher, Rathaus (Stadt) und Burg (Herr); verbraucht wird aus dem nächsten Lager des passenden Topfs; Speicher können brennen.
+ - **Militär:** Speerträger und Bogenschützen, Burg 5 und Kaserne 10 Plätze; Rekrut = Waffe + 8 Gold + 1 Bewohner;
+   Unterhalt 1 Nahrung + ⅓ Gold pro Tag. Wachtürme schießen. Räuberbanden ab Tag 9, werden größer.
+ - **Stadtplaner:** gerade Straßen mit Bögen, Wege als ausgetretene Trampelpfade, Gassen als T-Abzweig mit Blocktiefe, dichte Bürgerhäuser am Markt,
+   Straßenmarkt mit Rathaus, Brunnen und Ständen, Kirche mit Portal zur Straße; Burg abseits auf ihrem Hügel.
+ - **Mauern:** Zinnen außen, Wehrgang innen (R tauscht), Wachtürme rasten in die Mauer ein (Eingang innen),
+   Rasterpunkte nur im Werkzeug, Torhaus mit zwei Türmen, wo eine Straße die Mauer kreuzt; Soldaten beziehen per Rechtsklick Stellung auf Mauer/Turm/Torhaus. Rote Nadeln zeigen Angreifer.
++- **Herr und Stadt:** Die Burg ist dein Lager, Speicher und Rathaus sind das Lager der Stadt. Die Stadt (der Rat)
++  baut und lebt aus ihrem Lager; du bekommst Abgaben (mild / üblich / hart: Prozent von Nahrung, Holz, Stein, Eisen
++  + Steuergold), die Ernte deines Burghofs und die Waffen deiner Schmiede. Du zahlst Militär, Mauern, Sold, Hilfen.
++  Fehlt dir etwas: Burg anklicken → von der Stadt kaufen. Hungert die Stadt: Kornspeicher öffnen.
+ - **Höfe und Felder:** Felder auch als Trapeze (nutzen Keile an Wegen/Ufern), Hof anklicken zeigt seine Felder.
+   Abgebrannte Höfe bleiben Ruine: hilf mit Holz + Gold beim Wiederaufbau, sonst verwildern die Felder in 4 Tagen.
+ - **Straßen bearbeiten:** Ecken rund / stark rund / eckig, Punkte verschieben (Werkzeug „✎ Bearbeiten“).
+diff --git a/data/gebaeude.js b/data/gebaeude.js
+index 2b3e3a0..c641276 100644
+--- a/data/gebaeude.js
++++ b/data/gebaeude.js
+@@ -9,12 +9,13 @@
+  *   Verhältnis erhöht → ein VOLL besetzter Betrieb erzeugt so viel wie vorher, braucht aber mehr Bewohner.
+  *   Alte Werte: hof 2, viehhof 2/500, fischer 1/350, holzfaeller 2/220, steinbruch 2/300, erzgrube 2/600, schmiede 2/600.
+  * auftrag = nur der Herr kann es in Auftrag geben (militärisch); sonst plant der Baumeister.
++ * lager = 'herr' (Burg = Herrenkammer) oder 'stadt' (Speicher, Rathaus = Stadtlager); siehe sim/lager.js.
+  */
+ 
+ export const GEBAEUDE = {
+-  burg: { name: 'Burg Eschenbrück', b: 7000, t: 7000, hp: 3000, plaetze: 5, schiesst: 'burg', lager: true },
++  burg: { name: 'Burg Eschenbrück', b: 7000, t: 7000, hp: 3000, plaetze: 5, schiesst: 'burg', lager: 'herr' },
+   platz: { name: 'Marktplatz', b: 5400, t: 3200, begehbar: true },
+-  speicher: { name: 'Speicher', b: 2200, t: 2800, kosten: { holz: 30 }, arbeit: 900, hp: 400, lager: true },
++  speicher: { name: 'Speicher', b: 2200, t: 2800, kosten: { holz: 30 }, arbeit: 900, hp: 400, lager: 'stadt' },
+   haus: { name: 'Wohnhaus', b: 1150, t: 1600, kosten: { holz: 8 }, arbeit: 450, hp: 150, wohnplaetze: 5, zone: 1 },
+   hof: { name: 'Bauernhof', b: 1800, t: 2100, kosten: { holz: 14 }, arbeit: 600, hp: 220, arbeiter: 4, wohnplaetze: 5, zone: 2, ware: 'nahrung', gruppe: 0 },
+   viehhof: { name: 'Viehhof', b: 1700, t: 2300, kosten: { holz: 12 }, arbeit: 550, hp: 200, arbeiter: 3, wohnplaetze: 3, zone: 3, ware: 'nahrung', ticksProEinheit: 750, gruppe: 0 },
+@@ -28,7 +29,7 @@ export const GEBAEUDE = {
+   turm: { name: 'Wachturm', b: 1300, t: 1300, kosten: { holz: 10, stein: 15 }, arbeit: 700, hp: 500, schiesst: 'turm', auftrag: true },
+   palisade: { name: 'Palisade', b: 1500, t: 360, kosten: { holz: 3 }, arbeit: 120, hp: 200, mauer: true, auftrag: true },
+   mauer: { name: 'Steinmauer', b: 1500, t: 640, kosten: { stein: 4 }, arbeit: 220, hp: 600, mauer: true, auftrag: true },
+-  rathaus: { name: 'Rathaus', b: 2600, t: 2000, hp: 800 },
++  rathaus: { name: 'Rathaus', b: 2600, t: 2000, hp: 800, lager: 'stadt' },
+   kirche: { name: 'Kirche St. Ilmar', b: 3200, t: 5800, hp: 1000 },
+   // Endturm: entsteht von selbst, wo eine Mauer/Palisade an Wasser, Kartenrand oder Fels endet (schließt die Lücke)
+   eckturm: { name: 'Mauerturm', b: 1300, t: 1300, arbeit: 300, hp: 450, hpStein: 1000, mauer: true, endturm: true },
+diff --git a/data/werte.js b/data/werte.js
+index eccd1ab..f289bfe 100644
+--- a/data/werte.js
++++ b/data/werte.js
+@@ -29,7 +29,8 @@ export const START = {
+   soldaten: 3,
+   laune: 70,
+   /** Startbestände: die Burg hat ihr eigenes Lager (Schatzkammer, Rüstkammer). */
+-  burg: { nahrung: 60, holz: 0, stein: 0, eisen: 0, speere: 4, boegen: 2, gold: 160 },
++  // WARUM Holz/Stein in der Burg: Seit Runde 12 bezahlt der Herr Kaserne und Mauern aus seiner Kammer.
++  burg: { nahrung: 60, holz: 40, stein: 30, eisen: 0, speere: 4, boegen: 2, gold: 160 },
+   speicher: { nahrung: 280, holz: 70, stein: 25, eisen: 0, speere: 0, boegen: 0, gold: 0 },
+   haeuser: 5, hoefe: 2, holzfaeller: 1,
+ };
+@@ -45,13 +46,26 @@ export const BEDARF = {
+   ueberfallMalusAbbau: 7,
+ };
+ 
+-/** Gold pro Tag = floor(Bewohner / teiler). */
++/**
++ * Abgaben an den Lehnsherrn (Runde 12, „Herr & Stadt“). Gold pro Tag = floor(Bewohner / teiler) als Steuer in die Burg.
++ * anteil = Prozent der TAGESMENGE, die in die Stadtlager geliefert wurde (Zehnt, Zins, Bergregal); am Tagesende
++ * fährt sie als Fuhre vom Stadtlager zur Burg. WARUM Stein/Eisen höher: Bergregal — Bodenschätze gehörten dem Herrn.
++ */
+ export const STEUER = [
+-  { name: 'niedrig', teiler: 6, laune: 8 },
+-  { name: 'mittel', teiler: 4, laune: 0 },
+-  { name: 'hoch', teiler: 3, laune: -12 },
++  // Bot-Durchlauf Runde 12: Nahrung 15 % ließ die Kammer horten (Burghof!), Eisen war der Engpass für Speere.
++  { name: 'mild', teiler: 6, laune: 8, anteil: { nahrung: 5, holz: 6, stein: 30, eisen: 40 } },
++  { name: 'üblich', teiler: 4, laune: 0, anteil: { nahrung: 8, holz: 10, stein: 40, eisen: 50 } },
++  { name: 'hart', teiler: 3, laune: -12, anteil: { nahrung: 12, holz: 14, stein: 50, eisen: 60 } },
+ ];
+ 
++/**
++ * Herr und Stadt: Brücken zwischen den Lagern.
++ * kauf: so viel Ware gibt die Stadt für 1 Gold (Kaufen im Burg-Fenster; Burgvogt kauft fehlendes Korn für die Garnison
++ * selbst). kaufReserveTage: Nahrung verkauft die Stadt nur, wenn danach noch so viele Tage Vorrat bleiben.
++ * kornspeicher: Menge je Öffnen; bei Hunger + laune, höchstens einmal je Jahreszeit.
++ */
++export const HERR = { kauf: { nahrung: 3, holz: 2, stein: 1, eisen: 2 }, kaufReserveTage: 3, kornspeicher: 20, kornspeicherLaune: 5 };
++
+ export const ZUZUG = { abLaune: 50, wegzugUnter: 35, maxProTag: 5 };
+ 
+ /** Sold pro Tag = ceil(Soldaten / soldTeiler). */
+diff --git a/index.html b/index.html
+index 85317b9..089c973 100644
+--- a/index.html
++++ b/index.html
+@@ -97,6 +97,9 @@
+           <b>R</b> tauscht innen und außen. Wachtürme rasten in Mauern ein (Eingang innen).</li>
+         <li><b>Straßen bearbeiten:</b> „✎ Bearbeiten“ wählen, über eine Straße fahren: Eckpunkt anklicken = rund / stark rund / eckig,
+           Punkt ziehen = verschieben.</li>
++        <li><b>Herr und Stadt:</b> Oben steht dein Lager (die Burg). Die Stadt hat ihr eigenes (Speicher, Rathaus) und baut
++          daraus selbst. Du bekommst Abgaben (rechts „Abgaben an dich“: mild / üblich / hart), die Ernte deines Burghofs und
++          die Steuer — und zahlst Militär, Mauern und Sold. Fehlt dir etwas: Burg anklicken → von der Stadt kaufen.</li>
+         <li><b>Höfe:</b> Anklicken zeigt ihre Felder (gelb). Brennen Räuber einen Hof nieder, baut ihn niemand von selbst wieder auf —
+           hilf mit Holz und Gold, sonst verwildern die Felder.</li>
+       </ul>
+diff --git a/sim/baumeister.js b/sim/baumeister.js
+index 209aaec..f0f3cb7 100644
+--- a/sim/baumeister.js
++++ b/sim/baumeister.js
+@@ -710,7 +710,7 @@ function feldwegAchse(z, zone, ziel) {
+ /** Kennzahlen einer Stadt (auch für die Oberfläche). */
+ export function stadtStatus(z, herr) {
+   const h = z.herren[herr];
+-  const st = { wohnKap: 0, wohnKapBau: 0, hausBau: 0, haeuser: 0, arbeiterBedarf: 0, arbeiterReserviert: 0, anzahl: {}, anzahlBau: {}, soldaten: 0, plaetze: 0, nahrungProTag: 0, verbrauch: 0, tuerme: 0, mauern: 0 };
++  const st = { wohnKap: 0, wohnKapBau: 0, hausBau: 0, haeuser: 0, arbeiterBedarf: 0, arbeiterReserviert: 0, anzahl: {}, anzahlBau: {}, soldaten: 0, plaetze: 0, nahrungProTag: 0, nahrungHerr: 0, verbrauch: 0, tuerme: 0, mauern: 0 };
+   for (const g of z.gebaeude) {
+     if (g.besitzer !== herr || g.zustand === 'weg') continue;
+     const typ = GEBAEUDE[g.art];
+@@ -720,7 +720,7 @@ export function stadtStatus(z, herr) {
+       if (typ.wohnplaetze) { st.wohnKap += g.wohn || typ.wohnplaetze; st.haeuser++; }
+       if (typ.arbeiter) st.arbeiterBedarf += typ.arbeiter;
+       if (typ.plaetze) st.plaetze += typ.plaetze;
+-      if (g.art === 'hof') { let p = 0; for (const id of g.felder) if (!z.felder[id].weg) p += feldProzent(z.felder[id]); st.nahrungProTag += Math.floor(p * FELD.ertrag * 11 / 1000 / 20); }
++      if (g.art === 'hof') { let p = 0; for (const id of g.felder) if (!z.felder[id].weg) p += feldProzent(z.felder[id]); const n = Math.floor(p * FELD.ertrag * 11 / 1000 / 20); st.nahrungProTag += n; if (g.herrenhof) st.nahrungHerr += n; }
+       if (g.art === 'viehhof') st.nahrungProTag += Math.floor(typ.arbeiter * 600 / viehTakt(z, g));
+       if (g.art === 'fischer') st.nahrungProTag += Math.floor(typ.arbeiter * 600 / typ.ticksProEinheit);
+       if (g.art === 'turm') st.tuerme++;
+@@ -754,9 +754,10 @@ function bezahlbar(h, art) {
+   for (const w in kosten) if ((h.lager[w] || 0) < kosten[w]) return false;
+   return true;
+ }
+-export function bezahlen(z, herr, art, x, y) {
++/** Baukosten zahlen: der Rat aus dem Stadtlager, Aufträge des Herrn (topf 'herr') aus der Burg. */
++export function bezahlen(z, herr, art, x, y, topf = 'stadt') {
+   const kosten = GEBAEUDE[art].kosten || {};
+-  for (const w in kosten) nehmen(z, herr, w, kosten[w], x, y);
++  for (const w in kosten) nehmen(z, herr, w, kosten[w], x, y, topf);
+ }
+ 
+ function log(z, herr, text) {
+diff --git a/sim/befehle.js b/sim/befehle.js
+index b6aecf8..ef56293 100644
+--- a/sim/befehle.js
++++ b/sim/befehle.js
+@@ -24,12 +24,14 @@
+  *   {typ:'strasseEcke', id, i, rund:0..2}          Ecke i einer Straße eckig / rund / stark rund
+  *   {typ:'strassePunkt', id, i, x, y}             Punkt i einer Straße verschieben
+  *   {typ:'wiederaufbau', id}                      abgebrannten Hof gegen Holz + Gold sofort wieder aufbauen
+- *   {typ:'cheat'}                                 Testhilfe: +200 von jeder Ware in die Burg
++ *   {typ:'kornspeicher'}                          Herr gibt Nahrung aus der Burg an die Stadt (bei Hunger + Laune)
++ *   {typ:'kaufen', ware, menge}                   Herr kauft der Stadt Ware ab (fester Preis, Gold an die Stadt)
++ *   {typ:'cheat'}                                 Testhilfe: +200 von jeder Ware in die Burg und ins Stadtlager
+  *   mauer kennt optional tauschen:true = Außenseite (Zinnen) auf die andere Seite
+  *   einheiten mit aktion:'gehe' kennt optional w (Blickrichtung, Grad) und reihe (Mann je Reihe) = Formation
+  */
+ 
+-import { KARTE_B, KARTE_H, LAND_RADIUS, HOF_BRAND } from '../data/werte.js';
++import { KARTE_B, KARTE_H, LAND_RADIUS, HOF_BRAND, HERR, TICKS_PRO_TAG, TAGE_PRO_JAHRESZEIT } from '../data/werte.js';
+ import { GEBAEUDE, ZONEN, WAREN, WARENNAME, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
+ import { TEMPO } from '../data/werte.js';
+ import { wegGecached, pfadLaenge } from './pfad.js';
+@@ -38,7 +40,8 @@ import { summieren } from './lager.js';
+ import { karteFuer } from './karte.js';
+ import { pruefePlatz, gebaeudeAnlegen, bezahlen } from './baumeister.js';
+ import { toreSetzen, mauerKreuztStrasse, strasseHinzufuegen, BREITE } from './strassen.js';
+-import { geben, nehmen } from './lager.js';
++import { geben, nehmen, topfVon, lagerVon } from './lager.js';
++import { vonStadtKaufen } from './wirtschaft.js';
+ import { abgeleitet, objekteNahe } from './abgeleitet.js';
+ import { abstand, winkelVon, wnorm, meldung, lokal, punktIn, kachel, ueberlappt, SIN, COS } from './lib.js';
+ 
+@@ -214,7 +217,8 @@ const ganz = (v, a, b) => Math.max(a, Math.min(b, Math.trunc(Number(v) || 0)));
+ export function fehlendeKosten(h, art) {
+   const kosten = GEBAEUDE[art].kosten || {};
+   const fehlt = [];
+-  for (const w in kosten) if ((h.lager[w] || 0) < kosten[w]) fehlt.push(w);
++  // Aufträge und Mauern bezahlt der Herr aus seiner Kammer (Burg)
++  for (const w in kosten) if ((h.kammer[w] || 0) < kosten[w]) fehlt.push(w);
+   return fehlt;
+ }
+ 
+@@ -258,7 +262,7 @@ export function befehlAnwenden(z, b) {
+       const o = { x: ganz(b.x, 0, KARTE_B * 1000), y: ganz(b.y, 0, KARTE_H * 1000), b: typ.b, t: typ.t, w: wnorm(ganz(b.w, -720, 720)) };
+       const grund = auftragPruefen(z, herr, art, o);
+       if (grund) { meldung(z, herr, `${typ.name} geht hier nicht: ${grund}.`, 'warn'); return; }
+-      bezahlen(z, herr, art, o.x, o.y);
++      bezahlen(z, herr, art, o.x, o.y, 'herr');
+       const neu = gebaeudeAnlegen(z, herr, art, o, { auftrag: true, keinWeg: art === 'turm' && !!b.anMauer });
+       // In die Mauer eingeklinkter Wachturm: Eingang (Front) auf der Mauer-Innenseite, Soldaten steigen dort auf
+       if (art === 'turm' && b.anMauer) neu.anMauer = true;
+@@ -282,7 +286,7 @@ export function befehlAnwenden(z, b) {
+         if (pruefePlatz(z, herr, o, { mauer: true, keineStrasse: false, steilMax: 150, felsOk: true })) { ausgelassen++; continue; }
+         if (mauerKreuztStrasse(z, o, true) >= 0) { ausgelassen++; continue; } // nicht längs auf einem Weg
+         if (fehlendeKosten(h, art).length) { geld++; continue; }
+-        bezahlen(z, herr, art, o.x, o.y);
++        bezahlen(z, herr, art, o.x, o.y, 'herr');
+         const g = gebaeudeAnlegen(z, herr, art, o, { auftrag: true, keinWeg: true });
+         // Rasterpunkte: genaue Enden jedes Stücks, damit neue Mauern und Türme exakt ansetzen können
+         g.ende = [ax + Math.trunc((bx - ax) * i / n), ay + Math.trunc((by - ay) * i / n), ax + Math.trunc((bx - ax) * (i + 1) / n), ay + Math.trunc((by - ay) * (i + 1) / n)];
+@@ -296,11 +300,12 @@ export function befehlAnwenden(z, b) {
+     }
+     case 'abreissen': {
+       const g = z.gebaeude[ganz(b.id, 0, z.gebaeude.length - 1)];
+-      if (!g || g.besitzer !== herr || g.zustand === 'weg' || g.art === 'burg' || g.art === 'platz') return;
++      if (!g || g.besitzer !== herr || g.zustand === 'weg' || g.art === 'burg' || g.art === 'platz' || g.art === 'rathaus' || g.art === 'kirche') return;
+       const kosten = GEBAEUDE[g.art].kosten || {};
+       g.zustand = 'weg';
+-      for (const w in kosten) if (w !== 'gold') geben(z, herr, null, w, Math.floor(kosten[w] / 2), g.x, g.y);
+-      if (g.inhalt) for (const w in g.inhalt) geben(z, herr, null, w, g.inhalt[w], g.x, g.y);
++      const zahler = GEBAEUDE[g.art].auftrag ? 'herr' : 'stadt';
++      for (const w in kosten) if (w !== 'gold') geben(z, herr, null, w, Math.floor(kosten[w] / 2), g.x, g.y, zahler);
++      if (g.inhalt) for (const w in g.inhalt) geben(z, herr, null, w, g.inhalt[w], g.x, g.y, topfVon(g));
+       for (const id of g.felder) z.felder[id].weg = true;
+       for (const u of z.einheiten) if (u.heim === g.id) u.heim = h.burg;
+       z.version++;
+@@ -409,9 +414,9 @@ export function befehlAnwenden(z, b) {
+       // Abgebrannter Hof: Der Herr gibt Holz und Gold, die Bauern bauen sofort wieder auf (halbe Bauzeit).
+       const g = z.gebaeude[ganz(b.id, 0, z.gebaeude.length - 1)];
+       if (!g || g.besitzer !== herr || g.zustand !== 'ruine') return;
+-      const fehlt = Object.keys(HOF_BRAND.hilfe).filter((w) => (h.lager[w] || 0) < HOF_BRAND.hilfe[w]);
++      const fehlt = Object.keys(HOF_BRAND.hilfe).filter((w) => (h.kammer[w] || 0) < HOF_BRAND.hilfe[w]);
+       if (fehlt.length) { meldung(z, herr, `Für den Wiederaufbau fehlt ${fehlt.map((w) => WARENNAME[w]).join(', ')}.`, 'warn'); return; }
+-      for (const w in HOF_BRAND.hilfe) nehmen(z, herr, w, HOF_BRAND.hilfe[w], g.x, g.y);
++      for (const w in HOF_BRAND.hilfe) nehmen(z, herr, w, HOF_BRAND.hilfe[w], g.x, g.y, 'herr');
+       const typ = GEBAEUDE[g.art];
+       g.zustand = 'bau'; g.arbeit = Math.floor(typ.arbeit * HOF_BRAND.bauAnteil / 100);
+       g.hp = Math.floor(g.hpMax / 4); g.puffer = 0; g.aufgabe = 0; g.aufgabeFeld = -1; g.pflegeFeld = -1;
+@@ -420,11 +425,35 @@ export function befehlAnwenden(z, b) {
+       meldung(z, herr, `Die Bauern bauen ${typ.name} mit deiner Hilfe wieder auf.`, 'gut');
+       break;
+     }
++    case 'kornspeicher': {
++      // Der Herr öffnet seinen Kornspeicher: Nahrung aus der Burg an die Stadt. Hungert die Stadt, dankt sie es
++      // (Laune), höchstens einmal je Jahreszeit — damit Horten und Verschenken kein Laune-Automat wird.
++      const burg = z.gebaeude[h.burg], mk = z.gebaeude[h.markt] || burg;
++      if (!lagerVon(z, herr, 'stadt').length) { meldung(z, herr, 'Die Stadt hat kein Lager mehr — erst muss ein Speicher stehen.', 'warn'); return; }
++      const menge = nehmen(z, herr, 'nahrung', HERR.kornspeicher, burg.x, burg.y, 'herr');
++      if (!menge) { meldung(z, herr, 'In der Burg liegt keine Nahrung.', 'warn'); return; }
++      geben(z, herr, null, 'nahrung', menge, mk.x, mk.y, 'stadt');
++      const saison = Math.floor(z.tick / (TICKS_PRO_TAG * TAGE_PRO_JAHRESZEIT));
++      if (menge >= HERR.kornspeicher && h.beduerfnisse.nahrung < 100 && h.kornspeicherSaison !== saison) {
++        h.kornspeicherSaison = saison; h.laune = Math.min(100, h.laune + HERR.kornspeicherLaune);
++        meldung(z, herr, `Der Herr öffnet seinen Kornspeicher: ${menge} Nahrung für die hungernde Stadt. Das Volk dankt es dir.`, 'gut');
++      } else meldung(z, herr, `${menge} Nahrung aus der Burg an die Stadt gegeben.`, 'info');
++      break;
++    }
++    case 'kaufen': {
++      const ware = String(b.ware);
++      if (!Object.hasOwn(HERR.kauf, ware)) return; // WARUM hasOwn: 'constructor' o. ä. aus dem Netz darf nichts kaputtmachen
++      const n = vonStadtKaufen(z, herr, ware, ganz(b.menge, 1, 200));
++      if (n) meldung(z, herr, `Von der Stadt gekauft: ${n} ${WARENNAME[ware]} für ${Math.ceil(n / HERR.kauf[ware])} Gold.`, 'info');
++      else meldung(z, herr, ware === 'nahrung' ? 'Die Stadt verkauft keine Nahrung mehr (Vorrat zu knapp) oder dir fehlt Gold.' : `Die Stadt hat kein ${WARENNAME[ware]} übrig oder dir fehlt Gold.`, 'warn');
++      break;
++    }
+     case 'cheat': {
+       // Testhilfe für Spieltests: füllt die Burg auf (im Mehrspieler später abschaltbar).
+       const burg = z.gebaeude[h.burg];
+-      for (const w of WAREN) geben(z, herr, burg, w, 200);
+-      meldung(z, herr, 'Schatzkammer aufgefüllt: +200 von jeder Ware.', 'gut');
++      const mk = z.gebaeude[h.markt] || burg;
++      for (const w of WAREN) { geben(z, herr, burg, w, 200, 0, 0, 'herr'); geben(z, herr, null, w, 200, mk.x, mk.y, 'stadt'); }
++      meldung(z, herr, 'Testhilfe: +200 von jeder Ware in die Burg und ins Stadtlager.', 'gut');
+       break;
+     }
+     case 'transfer': {
+@@ -432,6 +461,8 @@ export function befehlAnwenden(z, b) {
+       const ware = String(b.ware);
+       if (!von || !nach || von === nach || !WAREN.includes(ware)) return;
+       for (const g of [von, nach]) if (g.besitzer !== herr || g.zustand !== 'fertig' || !GEBAEUDE[g.art].lager) return;
++      // WARUM: Was im Stadtlager liegt, gehört der Stadt — der Herr bekommt seinen Anteil oder kauft (Runde 12).
++      if (topfVon(von) === 'stadt' && topfVon(nach) === 'herr') { meldung(z, herr, 'Das Stadtlager gehört der Stadt — kaufen kannst du im Fenster der Burg.', 'warn'); return; }
+       const menge = Math.min(ganz(b.menge, 0, 100000), von.inhalt[ware] || 0);
+       if (menge <= 0) { meldung(z, herr, `Im ${GEBAEUDE[von.art].name} liegt keine Ware dieser Art.`, 'warn'); return; }
+       von.inhalt[ware] -= menge;
+@@ -442,7 +473,7 @@ export function befehlAnwenden(z, b) {
+       // Je Träger höchstens 20; sie gehen kurz nacheinander los.
+       for (let rest = menge, i = 0; rest > 0; i++) {
+         const m = Math.min(20, rest); rest -= m;
+-        z.lieferungen.push({ id: z.naechsteLieferung++, herr, von: von.id, nach: nach.id, ware, menge: m, start: z.tick + i * 12, dauer, angekommen: false, umlagern: true });
++        z.lieferungen.push({ id: z.naechsteLieferung++, herr, von: von.id, nach: nach.id, ware, menge: m, start: z.tick + i * 12, dauer, angekommen: false, umlagern: true, topf: topfVon(nach) });
+       }
+       meldung(z, herr, `${menge} ${ware} werden umgelagert.`, 'info');
+       break;
+diff --git a/sim/lager.js b/sim/lager.js
+index 7798803..2de9ec5 100644
+--- a/sim/lager.js
++++ b/sim/lager.js
+@@ -1,10 +1,14 @@
+ /**
+- * lager.js — Waren liegen in echten Lagern (Speicher, Burg), nicht in einem unsichtbaren Topf.
++ * lager.js — Waren liegen in echten Lagern, getrennt in zwei Töpfe (Runde 12, „Herr & Stadt“).
+  *
+- * ZWECK:    Einlagern, Entnehmen (vom nächstgelegenen Lager zuerst), Summen je Herr, Umlagern.
++ * ZWECK:    Einlagern, Entnehmen (vom nächstgelegenen Lager zuerst), Summen je Topf, Umlagern.
++ *           Topf „stadt“: Speicher und Rathaus — daraus baut und lebt die Stadt (Rat/Baumeister, Essen, Heizen).
++ *           Topf „herr“:  die Burg (Herrenkammer) — daraus bezahlt der Lehnsherr Militär, Mauern, Sold, Hilfe.
++ *           Welcher Topf: GEBAEUDE[art].lager ('herr' | 'stadt').
+  * LIEST:    z.gebaeude (art mit GEBAEUDE.lager), g.inhalt
+- * SCHREIBT: g.inhalt, h.lager (= Summe aller Lager, nur zum Lesen für Prüfungen/Anzeige)
+- * REGEL:    Nie h.lager direkt ändern — immer nehmen()/geben(). h.lager wird danach neu summiert.
++ * SCHREIBT: g.inhalt, h.lager (= Summe Stadt), h.kammer (= Summe Herr) — beide nur zum Lesen für Prüfung/Anzeige
++ * REGEL:    Nie h.lager/h.kammer direkt ändern — immer nehmen()/geben(). Danach wird neu summiert.
++ *           Fehlt ein Lager des gewünschten Topfs (alle Speicher verbrannt), nimmt/legt man im anderen.
+  *           Brennt ein Speicher nieder, ist sein Inhalt verloren.
+  */
+ 
+@@ -13,26 +17,33 @@ import { abstand2 } from './lib.js';
+ 
+ export function leer() { const o = {}; for (const w of WAREN) o[w] = 0; return o; }
+ 
+-export function lagerVon(z, herr) {
+-  return z.gebaeude.filter((g) => g.besitzer === herr && g.zustand === 'fertig' && GEBAEUDE[g.art].lager);
++/** Topf eines Lagergebäudes. */
++export function topfVon(g) { return GEBAEUDE[g.art].lager === 'herr' ? 'herr' : 'stadt'; }
++
++/** Fertige Lager eines Herrn, wahlweise nur eines Topfs. */
++export function lagerVon(z, herr, topf = null) {
++  return z.gebaeude.filter((g) => g.besitzer === herr && g.zustand === 'fertig' && GEBAEUDE[g.art].lager && (!topf || topfVon(g) === topf));
+ }
+ 
+ export function summieren(z, herr) {
+-  const s = leer();
+-  for (const g of lagerVon(z, herr)) for (const w of WAREN) s[w] += g.inhalt[w] || 0;
++  const s = leer(), k = leer();
++  for (const g of lagerVon(z, herr)) { const ziel = topfVon(g) === 'herr' ? k : s; for (const w of WAREN) ziel[w] += g.inhalt[w] || 0; }
+   z.herren[herr].lager = s;
++  z.herren[herr].kammer = k;
+   return s;
+ }
+ 
+-/** Lager nach Abstand zu (x,y) sortiert (bei Gleichstand nach ID → deterministisch). */
+-function sortiert(z, herr, x, y) {
+-  return lagerVon(z, herr).sort((a, b) => (abstand2(a.x, a.y, x, y) - abstand2(b.x, b.y, x, y)) || (a.id - b.id));
++/** Lager eines Topfs nach Abstand zu (x,y) sortiert (Gleichstand nach ID → deterministisch); leer → alle Lager. */
++function sortiert(z, herr, x, y, topf) {
++  let l = lagerVon(z, herr, topf);
++  if (!l.length) l = lagerVon(z, herr);
++  return l.sort((a, b) => (abstand2(a.x, a.y, x, y) - abstand2(b.x, b.y, x, y)) || (a.id - b.id));
+ }
+ 
+-/** Nimmt bis zu n Einheiten, nächstes Lager zuerst. Gibt die genommene Menge zurück. */
+-export function nehmen(z, herr, ware, n, x, y) {
++/** Nimmt bis zu n Einheiten aus einem Topf, nächstes Lager zuerst. Gibt die genommene Menge zurück. */
++export function nehmen(z, herr, ware, n, x, y, topf = 'stadt') {
+   let rest = n;
+-  for (const g of sortiert(z, herr, x, y)) {
++  for (const g of sortiert(z, herr, x, y, topf)) {
+     if (rest <= 0) break;
+     const m = Math.min(rest, g.inhalt[ware] || 0);
+     g.inhalt[ware] -= m; rest -= m;
+@@ -41,22 +52,31 @@ export function nehmen(z, herr, ware, n, x, y) {
+   return n - rest;
+ }
+ 
+-/** Legt n Einheiten in ein bestimmtes Lager (oder das nächste zu x,y, wenn g fehlt/weg ist). */
+-export function geben(z, herr, g, ware, n, x = 0, y = 0) {
++/** Legt n Einheiten in ein bestimmtes Lager (oder das nächste des Topfs zu x,y, wenn g fehlt/weg ist). */
++export function geben(z, herr, g, ware, n, x = 0, y = 0, topf = 'stadt') {
+   if (n <= 0) return;
+-  if (!g || g.zustand !== 'fertig' || !GEBAEUDE[g.art].lager) g = sortiert(z, herr, g ? g.x : x, g ? g.y : y)[0];
++  if (!g || g.zustand !== 'fertig' || !GEBAEUDE[g.art].lager) {
++    // WARUM kein Rückfall für die Stadt: Ohne Stadtlager landete Stadtware sonst in der Burg — der Herr hätte so alles
++    // bekommen (Prüfer, Runde 12). Ohne Lager verdirbt sie; der Rat baut einen neuen Speicher.
++    if (topf === 'stadt' && !lagerVon(z, herr, 'stadt').length) return;
++    g = sortiert(z, herr, g ? g.x : x, g ? g.y : y, topf)[0];
++  }
+   if (!g) return;
+   g.inhalt[ware] = (g.inhalt[ware] || 0) + n;
+   summieren(z, herr);
+ }
+ 
+-export function naechstesLager(z, herr, x, y) { return sortiert(z, herr, x, y)[0] || null; }
++export function naechstesLager(z, herr, x, y, topf = 'stadt') { return sortiert(z, herr, x, y, topf)[0] || null; }
++
++/** Bestand eines Topfs (Summe). */
++export function bestand(h, topf = 'stadt') { return topf === 'herr' ? h.kammer : h.lager; }
+ 
+-/** Reicht der Bestand (Summe) für diese Kosten? */
+-export function hatKosten(h, kosten) {
+-  for (const w in kosten) if ((h.lager[w] || 0) < kosten[w]) return false;
++/** Reicht der Bestand eines Topfs für diese Kosten? */
++export function hatKosten(h, kosten, topf = 'stadt') {
++  const b = bestand(h, topf);
++  for (const w in kosten) if ((b[w] || 0) < kosten[w]) return false;
+   return true;
+ }
+-export function bezahleKosten(z, herr, kosten, x, y) {
+-  for (const w in kosten) nehmen(z, herr, w, kosten[w], x, y);
++export function bezahleKosten(z, herr, kosten, x, y, topf = 'stadt') {
++  for (const w in kosten) nehmen(z, herr, w, kosten[w], x, y, topf);
+ }
+diff --git a/sim/wirtschaft.js b/sim/wirtschaft.js
+index dcad1ea..d41f474 100644
+--- a/sim/wirtschaft.js
++++ b/sim/wirtschaft.js
+@@ -10,10 +10,10 @@
+ 
+ import {
+   TICKS_PRO_TAG, TAGE_PRO_JAHRESZEIT, KARTE_B, KARTE_H, TRAGEN, FELD, WALD, BEDARF, STEUER, ZUZUG,
+-  MILITAER, ZIEL, NIEDERLAGE_BEWOHNER, TEMPO, WAGEN, HOF_BRAND,
++  MILITAER, ZIEL, NIEDERLAGE_BEWOHNER, TEMPO, WAGEN, HOF_BRAND, HERR,
+ } from '../data/werte.js';
+ import { GEBAEUDE, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
+-import { nehmen, geben, naechstesLager, hatKosten, bezahleKosten } from './lager.js';
++import { nehmen, geben, naechstesLager, hatKosten, bezahleKosten, topfVon, lagerVon } from './lager.js';
+ import { karteFuer } from './karte.js';
+ import { abgeleitet } from './abgeleitet.js';
+ import { wegGecached, pfadLaenge } from './pfad.js';
+@@ -64,7 +64,7 @@ function hatArbeit(z, g, h) {
+   const typ = GEBAEUDE[g.art];
+   if (g.art === 'hof') return !!feldAufgabe(z, g) || !!pflegeFeld(z, g);
+   if (g.puffer >= TRAGEN * 2) return false;
+-  if (g.art === 'schmiede' && !g.material && !hatKosten(h, SCHMIEDE_PRODUKTE[g.produkt || 'speere'].material)) return false;
++  if (g.art === 'schmiede' && !g.material && !hatKosten(h, SCHMIEDE_PRODUKTE[g.produkt || 'speere'].material, 'herr')) return false;
+   if (g.blockiert && z.tick % 600 !== 0) return false;
+   return !!typ.arbeiter;
+ }
+@@ -98,8 +98,12 @@ export function arbeitVerteilen(z, herr) {
+   h.arbeitslos = frei;
+ }
+ 
++/** Liefert dieser Betrieb an den Herrn (Burg) statt an die Stadt? Burghof und Aufträge des Herrn (Schmiede). */
++export function liefertAnHerrn(g) { return !!g.herrenhof || !!GEBAEUDE[g.art].auftrag; }
++
+ function startLieferung(z, g, ware) {
+-  const ziel = naechstesLager(z, g.besitzer, g.x, g.y);
++  const topf = liefertAnHerrn(g) ? 'herr' : 'stadt';
++  const ziel = naechstesLager(z, g.besitzer, g.x, g.y, topf);
+   if (!ziel) return;
+   const wagen = g.art === 'hof';
+   const menge = Math.min(wagen ? WAGEN.menge : TRAGEN, g.puffer);
+@@ -109,7 +113,7 @@ function startLieferung(z, g, ware) {
+   const dauer = Math.max(15, Math.floor(laenge / TEMPO.traeger));
+   g.puffer -= menge;
+   g.seitLieferung = 0;
+-  const l = { id: z.naechsteLieferung++, herr: g.besitzer, von: g.id, nach: ziel.id, ware, menge, start: z.tick, dauer, angekommen: false, wagen };
++  const l = { id: z.naechsteLieferung++, herr: g.besitzer, von: g.id, nach: ziel.id, ware, menge, start: z.tick, dauer, angekommen: false, wagen, topf };
+   z.lieferungen.push(l);
+   g.traeger++;
+ }
+@@ -144,7 +148,7 @@ function produktion(z) {
+     else if (g.belegt > 0 && g.puffer < TRAGEN * 2) {
+       if (g.art === 'schmiede' && !g.material) {
+         const mat = SCHMIEDE_PRODUKTE[g.produkt || 'speere'].material;
+-        if (hatKosten(h, mat)) { bezahleKosten(z, g.besitzer, mat, g.x, g.y); g.material = 1; g.materialFuer = g.produkt || 'speere'; } else continue;
++        if (hatKosten(h, mat, 'herr')) { bezahleKosten(z, g.besitzer, mat, g.x, g.y, 'herr'); g.material = 1; g.materialFuer = g.produkt || 'speere'; } else continue;
+       }
+       g.fortschritt += g.belegt;
+       let tpe = g.art === 'viehhof' ? viehTakt(z, g) : typ.ticksProEinheit;
+@@ -232,8 +236,9 @@ function lieferungen(z) {
+       const h = z.herren[l.herr];
+       const ziel = z.gebaeude[l.nach];
+       // WARUM auch bei zerstörtem Ziel: Der Träger bringt es dann ins nächste Lager.
+-      geben(z, l.herr, ziel, l.ware, l.menge);
+-      if (!l.umlagern) h.heute[l.ware] = (h.heute[l.ware] || 0) + l.menge;
++      geben(z, l.herr, ziel, l.ware, l.menge, 0, 0, l.topf || 'stadt');
++      // Tagesmenge der Stadt (Grundlage der Abgabe); was direkt an den Herrn geht, zählt getrennt
++      if (!l.umlagern) { const zaehler = l.topf === 'herr' ? (h.heuteHerr || (h.heuteHerr = {})) : h.heute; zaehler[l.ware] = (zaehler[l.ware] || 0) + l.menge; }
+     }
+     if (z.tick >= l.start + 2 * l.dauer) {
+       const g = z.gebaeude[l.von];
+@@ -298,14 +303,15 @@ function anwerben(z) {
+       continue;
+     }
+     const leute = manuell ? h.bewohner > NIEDERLAGE_BEWOHNER + 2 : h.arbeitslos >= 1 && h.bewohner > NIEDERLAGE_BEWOHNER + 2;
+-    if (h.lager[aus.waffe] >= 1 && h.lager.gold >= a.gold && leute) {
+-      nehmen(z, g.besitzer, aus.waffe, 1, g.x, g.y); nehmen(z, g.besitzer, 'gold', a.gold, g.x, g.y);
++    // Waffen und Handgeld zahlt der Herr aus seiner Kammer
++    if (h.kammer[aus.waffe] >= 1 && h.kammer.gold >= a.gold && leute) {
++      nehmen(z, g.besitzer, aus.waffe, 1, g.x, g.y, 'herr'); nehmen(z, g.besitzer, 'gold', a.gold, g.x, g.y, 'herr');
+       h.bewohner--; if (h.arbeitslos > 0) h.arbeitslos--;
+       g.anwerbung = 1; g.anwerbungTyp = art;
+       if (manuell) schlange.shift();
+-    } else if (h.lager[aus.waffe] < 1) {
++    } else if (h.kammer[aus.waffe] < 1) {
+       meldung(z, g.besitzer, aus.waffe === 'speere' ? 'Rekrutieren stockt: keine Speere (Waffenschmiede braucht Holz + Eisen).' : 'Rekrutieren stockt: keine Bögen (Waffenschmiede auf Bögen stellen).', 'warn', 'waffen' + aus.waffe, 4000);
+-    } else if (h.lager.gold < a.gold) {
++    } else if (h.kammer.gold < a.gold) {
+       meldung(z, g.besitzer, `Rekrutieren stockt: Ein Rekrut kostet ${a.gold} Gold.`, 'warn', 'rekrutGold', 4000);
+     } else {
+       meldung(z, g.besitzer, 'Rekrutieren stockt: zu wenige Bewohner.', 'warn', 'rekrutLeute', 4000);
+@@ -357,10 +363,15 @@ function tagFuerHerr(z, herr, d) {
+   const h = z.herren[herr];
+   const st = stadtStatus(z, herr);
+   const soldaten = st.soldaten;
+-  // Nahrung: Soldaten zuerst
++  // Nahrung (Runde 12): Die Garnison isst aus der Kammer des Herrn; fehlt dort Korn, kauft der Burgvogt es auf dem
++  // Markt (Gold an die Stadt). Die Bürger essen aus dem Stadtlager.
+   const essen = h.bewohner + soldaten;
+   const mk = z.gebaeude[h.markt] || z.gebaeude[h.burg];
+-  const gegessen = nehmen(z, herr, 'nahrung', essen, mk.x, mk.y);
++  const burgG = z.gebaeude[h.burg];
++  let soldIst = nehmen(z, herr, 'nahrung', soldaten, burgG.x, burgG.y, 'herr');
++  let gekauft = 0;
++  if (soldIst < soldaten) { gekauft = vonStadtKaufen(z, herr, 'nahrung', soldaten - soldIst); soldIst += nehmen(z, herr, 'nahrung', gekauft, burgG.x, burgG.y, 'herr'); }
++  const gegessen = soldIst + nehmen(z, herr, 'nahrung', h.bewohner, mk.x, mk.y, 'stadt');
+   const nahrung = essen ? Math.floor(gegessen * 100 / essen) : 100;
+   const hungernde = Math.max(0, essen - gegessen);
+   // Wärme
+@@ -391,11 +402,11 @@ function tagFuerHerr(z, herr, d) {
+   // Gold
+   const steuer = Math.floor(h.bewohner / STEUER[h.steuer].teiler);
+   const sold = Math.ceil(soldaten / MILITAER.soldTeiler);
+-  const burgG = z.gebaeude[h.burg];
+-  geben(z, herr, burgG, 'gold', steuer);
+-  const bezahlt = nehmen(z, herr, 'gold', sold, burgG.x, burgG.y);
+-  h.gestern = { ...h.heute, steuer, sold, gegessen, geheizt, holzBedarf, essen };
+-  h.heute = {};
++  geben(z, herr, burgG, 'gold', steuer, 0, 0, 'herr');
++  const bezahlt = nehmen(z, herr, 'gold', sold, burgG.x, burgG.y, 'herr');
++  const abgabe = abgabeEinziehen(z, herr);
++  h.gestern = { ...h.heute, steuer, sold, gegessen, geheizt, holzBedarf, essen, abgabe, direkt: h.heuteHerr || {}, gekauft };
++  h.heute = {}; h.heuteHerr = {};
+   if (bezahlt < sold) {
+     const s = z.einheiten.find((u) => u.art === 'soldat' && u.besitzer === herr);
+     if (s) { s.hp = 0; s.desertiert = true; h.bewohner++; meldung(z, herr, 'Kein Sold in der Kasse: ein Soldat desertiert.', 'schlecht'); }
+@@ -417,7 +428,7 @@ function tagFuerHerr(z, herr, d) {
+   h.bewohner += neu - weg;
+   if (neu) ereignis(z, { typ: 'zuzug', herr, n: neu });
+   if (weg) { ereignis(z, { typ: 'wegzug', herr, n: weg }); if (!hungernde) meldung(z, herr, `${weg} Bewohner verlassen die Stadt.`, 'schlecht', 'wegzug', 1200); }
+-  const reichweite = essen ? Math.floor(h.lager.nahrung / Math.max(1, essen - Math.floor(st.nahrungProTag / 2))) : 99;
++  const reichweite = h.bewohner ? Math.floor(h.lager.nahrung / Math.max(1, h.bewohner - Math.floor((st.nahrungProTag - st.nahrungHerr) / 2))) : 99;
+   if (reichweite < 6 && tageBisErnte(z) > reichweite) meldung(z, herr, `Die Vorräte reichen nur noch etwa ${reichweite} Tage – mehr Acker, Weide oder Fischer!`, 'schlecht', 'vorrat', 1100);
+   h.chronik.push({ tag: d.tag, bewohner: h.bewohner, soldaten, laune: h.laune, nahrung: h.lager.nahrung });
+   if (h.chronik.length > 80) h.chronik.shift();
+@@ -430,6 +441,63 @@ function tagFuerHerr(z, herr, d) {
+   }
+ }
+ 
++/**
++ * Abgabe am Tagesende: Anteil (STEUER[stufe].anteil, Prozent) der heute ins Stadtlager gelieferten Waren fährt als
++ * Fuhre vom nächsten Stadtlager zur Burg. Bruchteile werden aufgehoben (h.abgabeRest, in Hundertsteln), damit kleine
++ * Mengen nicht verloren gehen. Ist das Stadtlager leer, entsteht keine Schuld.
++ * WARUM am Tagesende und nicht je Lieferung: ein Ort für die Regel, Träger müssen nicht geteilt werden (Simulation).
++ */
++function abgabeEinziehen(z, herr) {
++  const h = z.herren[herr], burg = z.gebaeude[h.burg], ant = STEUER[h.steuer].anteil, out = {};
++  if (!burg || burg.zustand !== 'fertig') return out;
++  const rest = h.abgabeRest || (h.abgabeRest = {});
++  for (const w in ant) {
++    const roh = (h.heute[w] || 0) * ant[w] + (rest[w] || 0);
++    const soll = Math.floor(roh / 100);
++    rest[w] = roh - soll * 100;
++    if (soll <= 0) continue;
++    const von = naechstesLager(z, herr, burg.x, burg.y, 'stadt');
++    if (!von || topfVon(von) !== 'stadt') continue;
++    const n = nehmen(z, herr, w, soll, burg.x, burg.y, 'stadt');
++    if (n <= 0) continue;
++    out[w] = n;
++    fuhre(z, herr, von, burg, w, n, 'herr');
++  }
++  const teile = Object.entries(out).map(([w, n]) => `${n} ${WARENNAME_KURZ[w]}`);
++  if (teile.length) meldung(z, herr, `Abgaben der Stadt unterwegs zur Burg: ${teile.join(', ')}.`, 'info', 'abgabe', 500);
++  return out;
++}
++const WARENNAME_KURZ = { nahrung: 'Nahrung', holz: 'Holz', stein: 'Stein', eisen: 'Eisen' };
++
++/** Eine Fuhre zwischen zwei Lagern (wie Umlagern): Ware ist schon entnommen, kommt nach Wegdauer an. */
++export function fuhre(z, herr, von, nach, ware, menge, topf) {
++  const pfad = wegGecached(z, tuerKachel(von), tuerKachel(nach), 'buerger');
++  const laenge = pfad ? pfadLaenge(pfad) : Math.floor(abstand(von.x, von.y, nach.x, nach.y) * 13 / 10);
++  const dauer = Math.max(15, Math.floor(laenge / TEMPO.traeger));
++  z.lieferungen.push({ id: z.naechsteLieferung++, herr, von: von.id, nach: nach.id, ware, menge, start: z.tick, dauer, angekommen: false, umlagern: true, topf });
++}
++
++/**
++ * Der Herr kauft der Stadt Ware ab (fester Preis HERR.kauf: so viel Ware je Gold). Nahrung nur, solange der Stadt
++ * HERR.kaufReserveTage Tage Vorrat bleiben. Die Ware liegt sofort in der Burg, das Gold im Stadtlager (Stadtkasse).
++ * Gibt die gekaufte Menge zurück.
++ */
++export function vonStadtKaufen(z, herr, ware, menge) {
++  const h = z.herren[herr], burg = z.gebaeude[h.burg], je = Object.hasOwn(HERR.kauf, ware) ? HERR.kauf[ware] : 0;
++  if (!je || !burg || menge <= 0) return 0;
++  if (!lagerVon(z, herr, 'stadt').length) return 0;
++  let frei = h.lager[ware] || 0;
++  if (ware === 'nahrung') frei -= HERR.kaufReserveTage * h.bewohner;
++  const n = Math.max(0, Math.min(menge, frei, (h.kammer.gold || 0) * je));
++  if (n <= 0) return 0;
++  const gold = Math.ceil(n / je);
++  nehmen(z, herr, 'gold', gold, burg.x, burg.y, 'herr');
++  geben(z, herr, null, 'gold', gold, burg.x, burg.y, 'stadt');
++  const got = nehmen(z, herr, ware, n, burg.x, burg.y, 'stadt');
++  geben(z, herr, burg, ware, got, 0, 0, 'herr');
++  return got;
++}
++
+ /** Tage bis zur nächsten Ernte (Spätsommer, Tag 9 im Jahr). */
+ export function tageBisErnte(z) {
+   const t = datum(z.tick).tag % 20;
+@@ -440,7 +508,8 @@ export function tageBisErnte(z) {
+ export function vorratReicht(z, herr, st, mehr) {
+   const h = z.herren[herr];
+   const dauer = (st.anzahl.viehhof || 0) * 2 + (st.anzahl.fischer || 0) * (jahreszeit(z) === 3 ? 0 : 1);
+-  const bedarf = Math.max(0, st.verbrauch + mehr - dauer) * tageBisErnte(z);
++  // Seit Runde 12 versorgt der Herr die Garnison aus seiner Kammer — das Stadtlager muss die Bürger tragen.
++  const bedarf = Math.max(0, h.bewohner + mehr - dauer) * tageBisErnte(z);
+   return h.lager.nahrung >= bedarf;
+ }
+ 
+diff --git a/sim/zustand.js b/sim/zustand.js
+index eee78ea..67a4251 100644
+--- a/sim/zustand.js
++++ b/sim/zustand.js
+@@ -22,7 +22,7 @@ import { winkelVon, wnorm, kachel, abstand, abstandStrecke, lokal, SIN, COS } fr
+ function neuerHerr(id, name) {
+   return {
+     id, name, burg: -1, markt: -1, lager: leer(), bewohner: START.bewohner, laune: START.laune,
+-    steuer: 1, arbeitslos: 0, beduerfnisse: { nahrung: 100, wohnen: 100, waerme: 100, sicherheit: 50 },
++    steuer: 1, arbeitslos: 0, kammer: leer(), heuteHerr: {}, abgabeRest: {}, beduerfnisse: { nahrung: 100, wohnen: 100, waerme: 100, sicherheit: 50 },
+     ueberfallMalus: 0, sammelpunkt: null, satteTage: 0, heute: {}, gestern: {}, chronik: [], meldeSperre: {}, planLog: [],
+   };
+ }
+@@ -187,6 +187,13 @@ export function erzeugeZustand(seed) {
+   }
+   for (let i = 0; i < START.soldaten; i++) neuerSoldat(z, 0, burg);
+   // Startlager setzen (Rodung beim Aufbau zählt nicht): Burg und erster Speicher getrennt.
++  // Burghof (Salland, Runde 12): der Starthof nächst der Burg bewirtschaftet der Herr selbst — seine Ernte geht ganz
++  // in die Burg. WARUM: Der Anteil (Zehnt) allein ernährt keine große Garnison (Ökonom, Team-Meeting Runde 11).
++  {
++    let bh = null;
++    for (const g of z.gebaeude) if (g.art === 'hof' && (!bh || abstand(g.x, g.y, burg.x, burg.y) < abstand(bh.x, bh.y, burg.x, burg.y))) bh = g;
++    if (bh) bh.herrenhof = true;
++  }
+   for (const g of z.gebaeude) if (g.inhalt) g.inhalt = leer();
+   burg.inhalt = { ...START.burg };
+   const speicher = z.gebaeude.find((g) => g.art === 'speicher');
+diff --git a/tests/bots.js b/tests/bots.js
+index 48d5966..5c9c90c 100644
+--- a/tests/bots.js
++++ b/tests/bots.js
+@@ -71,22 +71,30 @@ export function klugerBot() {
+       plan.zonen++;
+       if (plan.zonen >= aufgaben.length) plan.schritt = 1;
+     }
++    // Runde 12: Militär zahlt der Herr aus seiner Kammer. Fehlt Holz oder Stein für den nächsten Auftrag, kauft der Bot
++    // es der Stadt ab (wie ein Spieler im Burg-Fenster), solange Gold für Rekruten übrig bleibt.
++    if (plan.schritt >= 2 && plan.schritt <= 4 && z.tick % 200 === 7 && h.kammer.gold > 60) {
++      if (h.kammer.holz < 40) senden({ typ: 'kaufen', ware: 'holz', menge: 40 - h.kammer.holz });
++      if (h.kammer.stein < 20) senden({ typ: 'kaufen', ware: 'stein', menge: 20 - h.kammer.stein });
++    }
++    // Eisen für die Schmiede (Speere) kauft der Bot der Stadt ab, sobald die Schmiede steht
++    if (plan.schritt >= 2 && z.tick % 200 === 9 && h.kammer.eisen < 6 && h.kammer.gold > 40) senden({ typ: 'kaufen', ware: 'eisen', menge: 10 });
+     if (plan.schritt === 1 && tag >= 1) {
+       const o = platzFuerAuftrag(z, 'schmiede', markt.x, markt.y, 16);
+       if (o) { senden({ typ: 'bauen', art: 'schmiede', ...o }); plan.schritt = 2; return; }
+     }
+-    if (plan.schritt === 2 && h.lager.stein >= 20 && h.lager.gold >= 40 && h.lager.holz >= 30) {
++    if (plan.schritt === 2 && h.kammer.stein >= 20 && h.kammer.gold >= 40 && h.kammer.holz >= 30) {
+       const o = platzFuerAuftrag(z, 'kaserne', (burg.x + markt.x) / 2, (burg.y + markt.y) / 2, 18);
+       if (o) { senden({ typ: 'bauen', art: 'kaserne', ...o }); plan.schritt = 3; return; }
+     }
+-    if (plan.schritt === 3 && h.lager.stein >= 15 && h.lager.holz >= 10) {
++    if (plan.schritt === 3 && h.kammer.stein >= 15 && h.kammer.holz >= 10) {
+       const hof = z.gebaeude.find((g) => g.art === 'hof' && g.zustand === 'fertig');
+       const o = hof && platzFuerAuftrag(z, 'turm', hof.x, hof.y, 8);
+       if (o) senden({ typ: 'bauen', art: 'turm', ...o });
+       plan.schritt = 4;
+       return;
+     }
+-    if (plan.schritt === 4 && h.lager.stein >= 20 && h.lager.gold >= 40 && h.lager.holz >= 40) {
++    if (plan.schritt === 4 && h.kammer.stein >= 20 && h.kammer.gold >= 40 && h.kammer.holz >= 40) {
+       const st = stadtStatus(z, 0);
+       if (st.soldaten >= st.plaetze - 6) {
+         const o = platzFuerAuftrag(z, 'kaserne', markt.x, markt.y, 18);
+diff --git a/tests/sim.test.js b/tests/sim.test.js
+index 6a5fd12..956fa19 100644
+--- a/tests/sim.test.js
++++ b/tests/sim.test.js
+@@ -13,7 +13,7 @@ import { abspielen } from '../netz/lokal.js';
+ import { stadtStatus } from '../sim/baumeister.js';
+ import { befehlAnwenden } from '../sim/befehle.js';
+ import { klugerBot, nichtsBot } from './bots.js';
+-import { summieren } from '../sim/lager.js';
++import { summieren, topfVon } from '../sim/lager.js';
+ import { begehbar, findePfad } from '../sim/pfad.js';
+ import { kachel } from '../sim/lib.js';
+ import { karteFuer } from '../sim/karte.js';
+@@ -84,16 +84,21 @@ function lauf(seed, bot, tage) {
+ {
+   const z = erzeugeZustand(42);
+   const burg = z.gebaeude[z.herren[0].burg], sp = z.gebaeude.find((g) => g.art === 'speicher');
+-  const vorher = burg.inhalt.holz;
++  // Runde 12: Das Stadtlager gehört der Stadt — der Herr darf nur schenken (Burg → Speicher), nicht nehmen.
++  const spVor = sp.inhalt.holz;
+   befehlAnwenden(z, { typ: 'transfer', von: sp.id, nach: burg.id, ware: 'holz', menge: 30, spieler: 0 });
+-  pruefe('Umlagern: Ware verlässt den Speicher sofort', sp.inhalt.holz === 40 && z.lieferungen.filter((l) => l.umlagern).length === 2);
++  pruefe('Umlagern: Herr darf nichts aus dem Stadtlager holen', sp.inhalt.holz === spVor && !z.lieferungen.some((l) => l.umlagern));
++  const vorher = sp.inhalt.holz;
++  befehlAnwenden(z, { typ: 'transfer', von: burg.id, nach: sp.id, ware: 'holz', menge: 30, spieler: 0 });
++  pruefe('Umlagern: Spende verlässt die Burg sofort', burg.inhalt.holz === 10 && z.lieferungen.filter((l) => l.umlagern).length === 2);
+   // Nur die Umlager-Träger zählen (Baustellen dürfen in der Zeit Holz aus der Burg nehmen)
+   let angekommen = 0;
+   for (let i = 0; i < 900; i++) {
+     tick(z, []);
+     for (const e of z.lieferungen) if (e.umlagern && e.angekommen && !e.gezaehlt) { e.gezaehlt = true; angekommen += e.menge; }
+   }
+-  pruefe('Umlagern: Ware kommt in der Burg an', angekommen === 30 && burg.inhalt.holz >= vorher, `angekommen ${angekommen}, Burg-Holz ${burg.inhalt.holz}`);
++  pruefe('Umlagern: Spende kommt im Speicher an', angekommen === 30, `angekommen ${angekommen}`);
++  void vorher;
+   const ids = z.einheiten.filter((u) => u.art === 'soldat').map((u) => u.id);
+   const ziel = { x: burg.x + 9000, y: burg.y + 9000 };
+   befehlAnwenden(z, { typ: 'einheiten', ids, aktion: 'gehe', x: ziel.x, y: ziel.y, spieler: 0 });
+@@ -362,6 +367,36 @@ for (const seed of [42, 7]) {
+   pruefe('Höfe nutzen freies Ackerland (Felder wachsen nach, Seed 42 Tag 20 ≥ 50 % genutzt, vor Runde 11: 42 %)', genutzt >= 50, genutzt + ' %');
+ }
+ 
++// 4k) Runde 12: Herr & Stadt — zwei Lager, Abgabe, Garnison aus der Kammer, Kaufen, Kornspeicher
++{
++  const z = erzeugeZustand(42);
++  const h = z.herren[0], burg = z.gebaeude[h.burg];
++  pruefe('Zwei Lager: Burg = Herr, Speicher/Rathaus = Stadt', topfVon(burg) === 'herr' && z.gebaeude.filter((g) => g.art === 'speicher' || g.art === 'rathaus').every((g) => topfVon(g) === 'stadt') && h.kammer.gold === burg.inhalt.gold);
++  pruefe('Burghof: ein Starthof gehört dem Herrn', z.gebaeude.filter((g) => g.herrenhof).length === 1);
++  // Kaufen: Holz von der Stadt, Gold geht an die Stadt
++  const g0 = h.kammer.gold, h0 = h.kammer.holz, sg0 = h.lager.gold;
++  befehlAnwenden(z, { typ: 'kaufen', ware: 'holz', menge: 10, spieler: 0 });
++  pruefe('Kaufen: 10 Holz für 5 Gold, Gold an die Stadt', h.kammer.holz === h0 + 10 && h.kammer.gold === g0 - 5 && h.lager.gold === sg0 + 5);
++  // Kornspeicher: Nahrung aus der Burg an die Stadt
++  const n0 = h.kammer.nahrung, sn0 = h.lager.nahrung;
++  befehlAnwenden(z, { typ: 'kornspeicher', spieler: 0 });
++  pruefe('Kornspeicher öffnen: Nahrung wandert in die Stadt', h.kammer.nahrung === n0 - 20 && h.lager.nahrung === sn0 + 20);
++  // Abgabe: nach zwei Tagen kommt ein Anteil der Tageslieferungen in der Burg an; Garnison isst aus der Kammer
++  const kv = { ...h.kammer };
++  let abgabe = 0;
++  for (let i = 0; i < 600 * 2 + 300; i++) { tick(z, []); if (z.tick % 600 === 1) for (const w in (h.gestern.abgabe || {})) abgabe += h.gestern.abgabe[w]; }
++  pruefe('Abgabe: Anteil der Stadt fährt zur Burg', abgabe > 0, JSON.stringify(h.gestern.abgabe) + ' / Holz ' + kv.holz + '→' + h.kammer.holz);
++  // Zwischenstand-Befunde des Prüfers (Runde 12)
++  const gold1 = h.kammer.gold;
++  befehlAnwenden(z, { typ: 'kaufen', ware: '__proto__', menge: 10, spieler: 0 });
++  befehlAnwenden(z, { typ: 'kaufen', ware: 'constructor', menge: 10, spieler: 0 });
++  pruefe('Kaufen: unbekannte Ware (aus dem Netz) ändert nichts', h.kammer.gold === gold1 && Number.isFinite(burg.inhalt.gold) && !Object.keys(burg.inhalt).includes('constructor'));
++  const rh = z.gebaeude.find((g) => g.art === 'rathaus');
++  befehlAnwenden(z, { typ: 'abreissen', id: rh.id, spieler: 0 });
++  pruefe('Rathaus (Stadtlager) lässt sich nicht abreißen', rh.zustand === 'fertig');
++  pruefe('Garnison isst aus der Kammer des Herrn', h.gestern.essen > h.bewohner && h.kammer.nahrung < n0 - 20 + 200);
++}
++
+ // 5) Balance
+ {
+   const ergebnisse = [];
+diff --git a/ui/panels.js b/ui/panels.js
+index 1a8f2b3..add4920 100644
+--- a/ui/panels.js
++++ b/ui/panels.js
+@@ -7,7 +7,7 @@
+  */
+ 
+ import { GEBAEUDE, ZONEN, WARENNAME, WAREN, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
+-import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME, MILITAER, NIEDERLAGE_BEWOHNER, FELD, KAMPF, HOF_BRAND } from '../data/werte.js';
++import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME, MILITAER, NIEDERLAGE_BEWOHNER, FELD, KAMPF, HOF_BRAND, HERR } from '../data/werte.js';
+ import { stadtStatus, flurAuswertung, hofAusblick, FLUR_KLASSEN } from '../sim/baumeister.js';
+ import { tageBisErnte } from '../sim/wirtschaft.js';
+ import { datum, flaecheVon } from '../sim/lib.js';
+@@ -48,7 +48,7 @@ const STRASSEN_TEXT = {
+ /** Knopf „beim Wiederaufbau helfen“ (Kosten aus HOF_BRAND), ausgegraut, wenn das Lager nicht reicht. */
+ function hilfeKnopf(zz, g) {
+   const h = zz.herren[g.besitzer], k = HOF_BRAND.hilfe;
+-  const fehlt = Object.keys(k).filter((w) => (h.lager[w] || 0) < k[w]);
++  const fehlt = Object.keys(k).filter((w) => (h.kammer[w] || 0) < k[w]);
+   const preis = Object.entries(k).map(([w, n]) => `${n} ${SYMBOL[w]}`).join(' + ');
+   return `<div class="knoepfe"><button data-wiederaufbau="${g.id}" ${fehlt.length ? 'disabled' : ''} title="Die Bauern bauen sofort wieder auf, die Hälfte der Arbeit ist mit deiner Hilfe schon getan">⚒ Beim Wiederaufbau helfen (${preis})</button></div>` + (fehlt.length ? `<div class="klein" style="color:var(--schlecht)">Es fehlt: ${fehlt.map((w) => WARENNAME[w]).join(', ')}</div>` : '');
+ }
+@@ -73,6 +73,20 @@ function flurZeilen(zz, herr) {
+   return z1 + z2 + `<div class="klein">${hofAusblick(zz, herr)}</div>`;
+ }
+ 
++/** Stadt-Ampel in der oberen Leiste: Tage Nahrungsvorrat der Stadt (grün ≥ 8, gelb ≥ 4, sonst rot). */
++function stadtAmpel(h, st) {
++  const tage = Math.floor(h.lager.nahrung / Math.max(1, h.bewohner));
++  const farbe = tage >= 8 ? '🟢' : tage >= 4 ? '🟡' : '🔴';
++  return `<span data-tipp="Stadtlager (gehört der Stadt): ${h.lager.nahrung} Nahrung, ${h.lager.holz} Holz, ${h.lager.stein} Stein, ${h.lager.eisen} Eisen, ${h.lager.gold} Gold — reicht ≈ ${tage} Tage. Rechts unter „Stadtlager“ mehr.">🏘 ${farbe} ${tage} T.</span>`;
++}
++/** Dein Anteil gestern (Abgabe + Burghof) als kurze Zeile. */
++function anteilText(g) {
++  const s = {};
++  for (const quelle of [g.abgabe || {}, g.direkt || {}]) for (const w in quelle) s[w] = (s[w] || 0) + quelle[w];
++  const teile = Object.entries(s).filter(([, n]) => n > 0).map(([w, n]) => `${n}${SYMBOL[w]}`);
++  return teile.length ? teile.join(' ') : '—';
++}
++
+ function kostenText(art) {
+   const k = GEBAEUDE[art].kosten || {};
+   return Object.entries(k).map(([w, n]) => `${n}${SYMBOL[w]}`).join(' ');
+@@ -141,11 +155,14 @@ export function erzeugePanels(verbindung, ui, aktionen) {
+   $('seite-stadt').addEventListener('click', (e) => {
+     const b = e.target.closest('button'); if (!b) return;
+     if (b.dataset.steuer) verbindung().senden({ typ: 'steuer', stufe: Number(b.dataset.steuer) });
++    if (b.dataset.kornspeicher) verbindung().senden({ typ: 'kornspeicher' });
+     aktualisiere(true);
+   });
+   $('info').addEventListener('click', (e) => {
+     const b = e.target.closest('button'); if (!b) return;
+     if (b.dataset.wiederaufbau) verbindung().senden({ typ: 'wiederaufbau', id: Number(b.dataset.wiederaufbau) });
++    if (b.dataset.kaufen) verbindung().senden({ typ: 'kaufen', ware: b.dataset.kaufen, menge: 10 });
++    if (b.dataset.kornspeicher) verbindung().senden({ typ: 'kornspeicher' });
+     if (b.dataset.abriss) { verbindung().senden({ typ: 'abreissen', id: Number(b.dataset.abriss) }); ui.auswahl = -1; }
+     if (b.dataset.zu) { ui.auswahl = -1; ui.einheiten.clear(); }
+     if (b.dataset.frei) verbindung().senden({ typ: 'einheiten', ids: [...ui.einheiten], aktion: 'frei' });
+@@ -173,7 +190,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
+       if (e.nr <= letzteMeldung || e.typ !== 'meldung' || e.herr !== verbindung().spieler) continue;
+       const d = datum(e.tick);
+       chronik.unshift({ text: e.text, art: e.art, tag: d.tag + 1 });
+-      if (e.art !== 'info' || /Auftrag|fertig/.test(e.text)) {
++      if (e.art !== 'info' || /Auftrag|fertig|Abgaben|gekauft|an die Stadt/.test(e.text)) {
+         const m = document.createElement('div');
+         m.className = 'm ' + e.art; m.textContent = e.text;
+         $('meldungen').appendChild(m);
+@@ -235,7 +252,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
+     }
+     const arbeitend = Object.values(arbeit).reduce((a, b) => a + b, 0);
+     const leute = Math.max(0, h.bewohner - NIEDERLAGE_BEWOHNER - 2);
+-    const waffen = h.lager.speere + h.lager.boegen, goldFuer = Math.floor(h.lager.gold / MILITAER.anwerben.gold);
++    const waffen = h.kammer.speere + h.kammer.boegen, goldFuer = Math.floor(h.kammer.gold / MILITAER.anwerben.gold);
+     const platz = Math.max(0, st.plaetze - st.soldaten - ausbildung);
+     const jetzt = Math.min(leute, waffen, goldFuer, platz);
+     const grenze = jetzt === leute ? 'Bewohner' : jetzt === waffen ? 'Waffen' : jetzt === goldFuer ? 'Gold' : 'Plätze in Burg/Kaserne';
+@@ -251,10 +268,14 @@ export function erzeugePanels(verbindung, ui, aktionen) {
+     $('datum').textContent = `Tag ${d.tag + 1} · ${JAHRESZEITEN[d.jahreszeit]} · Jahr ${d.jahr}`;
+     const verbrauch = st.verbrauch;
+     const bv = bevoelkerung(zz, herr, h, st);
++    // Runde 12: Oben steht das Lager des HERRN (Burg). Klein dahinter, was gestern dazukam (Abgabe, Burghof, Steuer).
++    // Die Stadt hat ihr eigenes Lager — nur als Ampel (Tage Vorrat); Einzelheiten im Tooltip und rechts unter „Stadtlager“.
++    const ges = h.gestern || {}, ab = ges.abgabe || {}, di = ges.direkt || {};
++    const dazu = (w) => (ab[w] || 0) + (di[w] || 0) + (w === 'gold' ? (ges.steuer || 0) - (ges.sold || 0) : 0);
+     const waren = Object.keys(SYMBOL).map((w) => {
+-      const knapp = (w === 'nahrung' && h.lager.nahrung < verbrauch * 4) || (w === 'holz' && h.lager.holz < 10);
+-      return `<span class="${knapp ? 'knapp' : ''}" data-tipp="${WARENNAME[w]} – ${WAREN_TEXT[w]}">${SYMBOL[w]} ${h.lager[w]}</span>`;
+-    }).join('') + `<span data-tipp="Bewohner ${h.bewohner}: ${bv.arbeitend} arbeiten, ${bv.frei} ohne Arbeit · rekrutierbar jetzt ${bv.jetzt} (Details rechts unter Bevölkerung)">👥 ${h.bewohner} <small class="klein">(⚒${bv.arbeitend} · ${bv.frei} frei · 🛡${bv.jetzt})</small></span>`
++      const d = dazu(w), knapp = (w === 'nahrung' && h.kammer.nahrung < st.soldaten * 3) || (w === 'gold' && h.kammer.gold < MILITAER.anwerben.gold);
++      return `<span class="${knapp ? 'knapp' : ''}" data-tipp="${WARENNAME[w]} in deiner Burg: ${h.kammer[w]} (Stadtlager: ${h.lager[w]}) – ${WAREN_TEXT[w]}${d ? ' · gestern ' + (d > 0 ? '+' : '') + d : ''}">${SYMBOL[w]} ${h.kammer[w]}${d ? `<small class="klein"> ${d > 0 ? '+' : ''}${d}</small>` : ''}</span>`;
++    }).join('') + stadtAmpel(h, st) + `<span data-tipp="Bewohner ${h.bewohner}: ${bv.arbeitend} arbeiten, ${bv.frei} ohne Arbeit · rekrutierbar jetzt ${bv.jetzt} (Details rechts unter Bevölkerung)">👥 ${h.bewohner} <small class="klein">(⚒${bv.arbeitend} · ${bv.frei} frei · 🛡${bv.jetzt})</small></span>`
+       + `<span data-tipp="Garnison – Ziel: ${ZIEL.garnison} Mann. Sold: ${Math.ceil(st.soldaten / MILITAER.soldTeiler)} Gold/Tag">🛡️ ${st.soldaten}/${ZIEL.garnison}</span><span data-tipp="Zufriedenheit – ab 50 ziehen Leute zu, unter 35 ziehen sie weg">${h.laune >= 60 ? '🙂' : h.laune >= 35 ? '😐' : '☹️'} ${h.laune}</span>`;
+     $('waren').innerHTML = waren;
+     for (const b of $('tempo').querySelectorAll('button')) {
+@@ -286,7 +307,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
+     // Stadt-Seite
+     const bed = h.beduerfnisse;
+     const tbe = tageBisErnte(zz);
+-    const reicht = Math.floor(h.lager.nahrung / Math.max(1, verbrauch));
++    const reicht = Math.floor(h.lager.nahrung / Math.max(1, h.bewohner));
+     const zielGarn = st.soldaten >= ZIEL.garnison, zielSatt = h.satteTage >= ZIEL.satteTage;
+     const html = `
+       <div class="ziel"><b>Ziel</b>
+@@ -312,20 +333,23 @@ export function erzeugePanels(verbindung, ui, aktionen) {
+       ${balken('🏠 Unterkunft', bed.wohnen, 'Wohnplätze je Bewohner')}
+       ${balken('🔥 Wärme', bed.waerme, 'Brennholz im Herbst und Winter')}
+       ${balken('🛡️ Sicherheit', bed.sicherheit, `Soldaten je ${BEDARF.bewohnerProSoldat} Bewohner, Türme nahe den Häusern, Mauern; Überfälle senken sie`)}
+-      <h3>Vorrat</h3>
+-      <div class="zeile"><span class="w">Verbrauch pro Tag</span><span>${verbrauch} 🌾</span></div>
++      <h3>Stadtlager</h3>
++      <div class="zeile" data-tipp="Was die Stadt in Speicher und Rathaus hat — davon lebt und baut sie"><span class="w">Bestand</span><span>${h.lager.nahrung}🌾 ${h.lager.holz}🪵 ${h.lager.stein}🪨 ${h.lager.eisen}⛓️ ${h.lager.gold}🪙</span></div>
++      <div class="zeile"><span class="w">Verbrauch pro Tag</span><span>${h.bewohner} 🌾 <small class="klein">(+${st.soldaten} Garnison aus der Burg)</small></span></div>
+       <div class="zeile"><span class="w">Vorrat reicht</span><span style="color:${reicht < tbe ? 'var(--schlecht)' : 'var(--gut)'}">≈ ${reicht} Tage</span></div>
+       <div class="zeile"><span class="w">Nächste Ernte in</span><span>${tbe} Tagen</span></div>
+-      <div class="zeile"><span class="w">Gestern geliefert</span><span>${h.gestern.nahrung || 0}🌾 ${h.gestern.holz || 0}🪵 ${h.gestern.stein || 0}🪨 ${h.gestern.eisen || 0}⛓️ ${h.gestern.speere || 0}🔱 ${h.gestern.boegen || 0}🏹</span></div>
+-      <div class="zeile"><span class="w">Steuer / Sold gestern</span><span>+${h.gestern.steuer || 0} / −${h.gestern.sold || 0} 🪙</span></div>
++      <div class="zeile" data-tipp="Was gestern ins Stadtlager geliefert wurde"><span class="w">Gestern geliefert</span><span>${h.gestern.nahrung || 0}🌾 ${h.gestern.holz || 0}🪵 ${h.gestern.stein || 0}🪨 ${h.gestern.eisen || 0}⛓️</span></div>
++      <div class="zeile" data-tipp="Abgabe der Stadt, Ernte des Burghofs und Waffen deiner Schmiede (gehen ganz an dich)"><span class="w">Dein Anteil gestern</span><span>${anteilText(h.gestern)}</span></div>
++      <div class="zeile"><span class="w">Steuer / Sold gestern</span><span>+${h.gestern.steuer || 0} / −${h.gestern.sold || 0} 🪙${h.gestern.gekauft ? ` <small class="klein">(Burgvogt kaufte ${h.gestern.gekauft}🌾)</small>` : ''}</span></div>
++      ${h.lager.nahrung < h.bewohner * 4 && h.kammer.nahrung >= HERR.kornspeicher ? `<div class="knoepfe"><button data-kornspeicher="1" data-tipp="${HERR.kornspeicher} Nahrung aus deiner Burg an die Stadt. Hungert sie, dankt sie es dir (+${HERR.kornspeicherLaune} Laune, einmal je Jahreszeit).">🌾 Kornspeicher öffnen</button></div>` : ''}
+       <h3>Stadt</h3>
+       <div class="zeile"><span class="w">Häuser · Wohnplätze</span><span>${st.haeuser} · ${st.wohnKap} (${st.wohnFrei >= 0 ? st.wohnFrei + ' frei' : -st.wohnFrei + ' ohne Dach'})</span></div>
+       <div class="zeile"><span class="w">Höfe · Vieh · Fischer</span><span>${st.anzahl.hof || 0} · ${st.anzahl.viehhof || 0} · ${st.anzahl.fischer || 0}</span></div>
+       <div class="zeile"><span class="w">Holzfäller · Stein · Erz · Schmiede</span><span>${st.anzahl.holzfaeller || 0} · ${st.anzahl.steinbruch || 0} · ${st.anzahl.erzgrube || 0} · ${st.anzahl.schmiede || 0}</span></div>
+       <div class="zeile"><span class="w">Baustellen</span><span>${Object.values(st.anzahlBau).reduce((a, b) => a + b, 0)}</span></div>
+       ${flurZeilen(zz, herr)}
+-      <h3>Steuer</h3>
+-      <div class="steuer">${STEUER.map((s, i) => `<button data-steuer="${i}" class="${h.steuer === i ? 'an' : ''}" title="Gold/Tag = Bewohner ÷ ${s.teiler}, Laune ${s.laune >= 0 ? '+' : ''}${s.laune}">${s.name}</button>`).join('')}</div>
++      <h3>Abgaben an dich</h3>
++      <div class="steuer">${STEUER.map((s, i) => `<button data-steuer="${i}" class="${h.steuer === i ? 'an' : ''}" data-tipp="${s.name}: Gold/Tag = Bewohner ÷ ${s.teiler}; von allem, was ins Stadtlager kommt: Nahrung ${s.anteil.nahrung} %, Holz ${s.anteil.holz} %, Stein ${s.anteil.stein} %, Eisen ${s.anteil.eisen} % (Bergregal). Laune ${s.laune >= 0 ? '+' : ''}${s.laune}">${s.name}</button>`).join('')}</div>
+       <h3>Militär</h3>
+       <div class="zeile"><span class="w">Rekrut kostet</span><span>1 🔱/🏹 + ${MILITAER.anwerben.gold} 🪙 + 1 👥</span></div>
+       <div class="zeile"><span class="w">Ausbildung</span><span>${MILITAER.anwerben.ticks / 10} s je Rekrut</span></div>
+@@ -414,9 +438,15 @@ export function erzeugePanels(verbindung, ui, aktionen) {
+             const tun = g.aufgabeFeld >= 0 ? (zz.felder[g.aufgabeFeld].phase === 'reif' ? 'ernten' : 'säen') : g.pflegeFeld >= 0 && g.belegt ? 'hacken und jäten (Feldpflege, bis +' + FELD.pflegeBonus + ' % Ertrag)' : 'nichts zu tun – helfen anderswo';
+             zeilen.push('Bauern: ' + tun);
+           }
++          if (g.art === 'burg') {
++            zeilen.push('Deine Kammer: Hier liegt, was dir gehört — Abgaben der Stadt, Ernte des Burghofs, Steuer. Daraus zahlst du Militär, Mauern, Sold und Hilfen.');
++            extra += `<div class="wahl" data-tipp="Die Stadt verkauft dir zum festen Preis; das Gold geht in ihr Lager. Nahrung nur, solange ihr ${HERR.kaufReserveTage} Tage Vorrat bleiben.">Von der Stadt kaufen: ${Object.entries(HERR.kauf).map(([w, je]) => `<button data-kaufen="${w}">10 ${SYMBOL[w]} für ${Math.ceil(10 / je)} 🪙</button>`).join('')}</div>`;
++            extra += `<div class="wahl"><button data-kornspeicher="1" data-tipp="${HERR.kornspeicher} Nahrung an die Stadt">🌾 Kornspeicher öffnen (${HERR.kornspeicher})</button></div>`;
++          }
+           if (typ.lager) {
+             extra += inhaltTabelle(g);
+-            const andere = zz.gebaeude.filter((x) => x.id !== g.id && x.besitzer === herr && x.zustand === 'fertig' && GEBAEUDE[x.art].lager);
++            // Aus dem Stadtlager nur in andere Stadtlager (die Burg kauft, sie nimmt nicht); aus der Burg überallhin (Spende)
++            const andere = zz.gebaeude.filter((x) => x.id !== g.id && x.besitzer === herr && x.zustand === 'fertig' && GEBAEUDE[x.art].lager && !(GEBAEUDE[g.art].lager === 'stadt' && GEBAEUDE[x.art].lager === 'herr'));
+             if (andere.length) {
+               extra += `<div class="wahl transfer">Umlagern nach <select id="trNach">${andere.map((x) => `<option value="${x.id}" ${String(x.id) === ui.trNach ? 'selected' : ''}>${GEBAEUDE[x.art].name} (${Math.round(Math.hypot(x.x - g.x, x.y - g.y) / 1000)} Kacheln)</option>`).join('')}</select>
+                 <select id="trWare">${WAREN.map((w) => `<option value="${w}" ${w === ui.trWare ? 'selected' : ''}>${WARENNAME[w]} (${g.inhalt[w] || 0})</option>`).join('')}</select>

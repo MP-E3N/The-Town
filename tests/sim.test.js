@@ -12,7 +12,7 @@ import { hashZustand } from '../sim/lib.js';
 import { abspielen } from '../netz/lokal.js';
 import { stadtStatus } from '../sim/baumeister.js';
 import { befehlAnwenden } from '../sim/befehle.js';
-import { klugerBot, nichtsBot } from './bots.js';
+import { klugerBot, nichtsBot, platzFuerAuftrag } from './bots.js';
 import { summieren } from '../sim/lager.js';
 import { begehbar, findePfad } from '../sim/pfad.js';
 import { kachel } from '../sim/lib.js';
@@ -360,6 +360,32 @@ for (const seed of [42, 7]) {
   pruefe('Flur-Auswertung: jede Acker-/Weidekachel genau einmal eingeordnet', summe === zonen, `${summe} von ${zonen}`);
   const genutzt = Math.round(fa.acker[1] * 100 / Math.max(1, fa.acker[1] + fa.acker[2] + fa.acker[3] + fa.acker[4] + fa.acker[7]));
   pruefe('Höfe nutzen freies Ackerland (Felder wachsen nach, Seed 42 Tag 20 ≥ 50 % genutzt, vor Runde 11: 42 %)', genutzt >= 50, genutzt + ' %');
+}
+
+// 4k) Runde 13: Burg als privates Lager — gesperrt nimmt die Stadt nichts heraus, Betriebe liefern nicht hinein
+{
+  const z = erzeugeZustand(42);
+  const h = z.herren[0], burg = z.gebaeude[h.burg];
+  pruefe('Burg ist zu Spielbeginn gesperrt (privat)', burg.gesperrt === true && h.privat.gold === burg.inhalt.gold && h.lager.gold === 0);
+  // Viel Nahrung in die Burg, die Stadt leer räumen: Bürger dürfen nicht aus der Burg essen
+  burg.inhalt.nahrung = 500;
+  for (const g of z.gebaeude) if (g.art === 'speicher') g.inhalt.nahrung = 0;
+  summieren(z, 0);
+  for (let i = 0; i < 600; i++) tick(z, []);
+  pruefe('Gesperrt: Bürger essen nicht aus der Burg (Garnison schon)', burg.inhalt.nahrung >= 500 - 10 && burg.inhalt.nahrung < 500, 'Burg-Nahrung ' + burg.inhalt.nahrung);
+  const holzVor = burg.inhalt.holz;
+  for (let i = 0; i < 1200; i++) tick(z, []);
+  pruefe('Gesperrt: Betriebe liefern nicht in die Burg', burg.inhalt.holz === holzVor, 'Burg-Holz ' + holzVor + '→' + burg.inhalt.holz);
+  befehlAnwenden(z, { typ: 'lagerSperre', id: burg.id, an: false, spieler: 0 });
+  pruefe('Geöffnet: Burg zählt wieder zum Stadtlager', !burg.gesperrt && h.lager.nahrung >= burg.inhalt.nahrung && h.privat.nahrung === 0);
+  // Der Herr zahlt Aufträge zuerst aus der Burg
+  befehlAnwenden(z, { typ: 'lagerSperre', id: burg.id, an: true, spieler: 0 });
+  burg.inhalt.gold = 100; summieren(z, 0);
+  const sp = z.gebaeude.find((g) => g.art === 'speicher'); const spGold = sp.inhalt.gold;
+  const o = platzFuerAuftrag(z, 'kaserne', burg.x, burg.y, 20);
+  burg.inhalt.holz += 40; burg.inhalt.stein += 30; summieren(z, 0);
+  befehlAnwenden(z, { typ: 'bauen', art: 'kaserne', ...o, spieler: 0 });
+  pruefe('Auftrag des Herrn: bezahlt aus der Burg', burg.inhalt.gold === 60 && sp.inhalt.gold === spGold, 'Burg-Gold ' + burg.inhalt.gold);
 }
 
 // 5) Balance

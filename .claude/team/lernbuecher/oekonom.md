@@ -14,3 +14,12 @@ Gruben klein, Arbeiter wechselten mit der Landwirtschaft; für Steinbrüche kaum
 **Messung:** Bot-Siegtage 42: 23→28, 7: 23→24, 99: 29→39, 5: 21→23, 1234: 21→35.
 **Lehre:** Seed 99 und 1234 reagieren am stärksten (Bergbau-lastig?) — beim nächsten Mal je Seed nach dem Engpass schauen.
 **Übungsfrage:** Woran sehe ich in den Bot-Läufen früh, welcher Betrieb der Engpass ist?
+
+### 2026-11-13 — Runde 12 — Herr & Stadt
+**Beobachtung:** Mit 15 % Nahrung + Burghof hortete der Herr bis 1600 Nahrung, gewann aber nur 1/5 Karten.
+**Ursache:** Engpass war Eisen für Speere (Bergregal 30 % ≈ 1/Tag), nicht Nahrung. Meine Annahme „Zehnt trägt die
+Garnison nicht“ übersah, dass der Burghof eine volle Jahresernte bringt.
+**Änderung:** Nahrung 8 %, Eisen 50 %, Eisen kaufbar (2 je Gold); Durchlauf über 4 Varianten.
+**Messung:** Siegtage 26/39/37/39/36, max. Kammer-Nahrung 724.
+**Lehre:** Erst Verlauf der Bestände ansehen (welcher Topf läuft leer, welcher über?), dann Prozente schätzen.
+**Übungsfrage:** Welche Ware ist im nächsten Kreislauf (Konsumgut) der wahrscheinliche Engpass, und wie sehe ich es am Tag 5?

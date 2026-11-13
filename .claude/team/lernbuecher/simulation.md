@@ -23,3 +23,16 @@ Tick eine neue A*-Suche (12 000 Knoten). Ein Soldat vor einem unerreichbaren Rä
 **Messung:** 62 s → 2,6 s, Bot-Ergebnisse unverändert, Tests 68 s → 7,8 s.
 **Lehre:** Eine Wartezeit, die nur greift, „wenn es schon einen Pfad gibt“, greift im Fehlerfall nie. Fehlerpfade von
 Caches/Wartezeiten immer extra prüfen.
+
+### 2026-11-13 — Runde 12
+**Änderung:** Lagertöpfe ('herr'/'stadt'), Abgabe am Tagesende als Fuhre, `vonStadtKaufen`.
+**Befunde des Prüfers:** Prototyp-Schlüssel ('constructor') aus Befehlen; Rückfall eines Topfs in den anderen hebelte
+eine Spielregel aus.
+**Lehre:** (1) Jede Nachschlage-Tabelle mit Netz-Eingabe nur über `Object.hasOwn`. (2) Ein „Rückfall“ (Fallback) ist
+selbst eine Spielregel — vor dem Einbauen fragen, ob er eine andere Regel umgeht.
+
+### 2026-11-13 — Runde 13
+**Änderung:** Statt zweier Töpfe ein Sperr-Flag am Lager (`g.gesperrt`) + `wer` beim Entnehmen. Viel kleiner, gleiche
+Wirkung für den Nutzer.
+**Lehre:** Dateien aus `git checkout` haben CRLF — Patch-Skripte müssen Zeilenenden erhalten; `split/join` ersetzt ALLE
+Vorkommen, ein kürzeres Muster kann ein längeres schon verschluckt haben.

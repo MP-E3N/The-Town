@@ -24,7 +24,8 @@
  *   {typ:'strasseEcke', id, i, rund:0..2}          Ecke i einer Straße eckig / rund / stark rund
  *   {typ:'strassePunkt', id, i, x, y}             Punkt i einer Straße verschieben
  *   {typ:'wiederaufbau', id}                      abgebrannten Hof gegen Holz + Gold sofort wieder aufbauen
- *   {typ:'cheat'}                                 Testhilfe: +200 von jeder Ware in die Burg
+ *   {typ:'lagerSperre', id, an}                   Burg sperren (privat: Stadt nimmt nichts, nichts wird hineingeliefert) / öffnen
+ *   {typ:'cheat'}                                 Testhilfe: +200 von jeder Ware in die Burg und ins nächste Stadtlager
  *   mauer kennt optional tauschen:true = Außenseite (Zinnen) auf die andere Seite
  *   einheiten mit aktion:'gehe' kennt optional w (Blickrichtung, Grad) und reihe (Mann je Reihe) = Formation
  */
@@ -38,7 +39,7 @@ import { summieren } from './lager.js';
 import { karteFuer } from './karte.js';
 import { pruefePlatz, gebaeudeAnlegen, bezahlen } from './baumeister.js';
 import { toreSetzen, mauerKreuztStrasse, strasseHinzufuegen, BREITE } from './strassen.js';
-import { geben, nehmen } from './lager.js';
+import { geben, nehmen, verfuegbar } from './lager.js';
 import { abgeleitet, objekteNahe } from './abgeleitet.js';
 import { abstand, winkelVon, wnorm, meldung, lokal, punktIn, kachel, ueberlappt, SIN, COS } from './lib.js';
 
@@ -214,7 +215,8 @@ const ganz = (v, a, b) => Math.max(a, Math.min(b, Math.trunc(Number(v) || 0)));
 export function fehlendeKosten(h, art) {
   const kosten = GEBAEUDE[art].kosten || {};
   const fehlt = [];
-  for (const w in kosten) if ((h.lager[w] || 0) < kosten[w]) fehlt.push(w);
+  // Aufträge zahlt der Herr: zuerst aus seiner Burg, dann aus den Lagern der Stadt
+  for (const w in kosten) if (verfuegbar(h, w, 'herr') < kosten[w]) fehlt.push(w);
   return fehlt;
 }
 
@@ -258,7 +260,7 @@ export function befehlAnwenden(z, b) {
       const o = { x: ganz(b.x, 0, KARTE_B * 1000), y: ganz(b.y, 0, KARTE_H * 1000), b: typ.b, t: typ.t, w: wnorm(ganz(b.w, -720, 720)) };
       const grund = auftragPruefen(z, herr, art, o);
       if (grund) { meldung(z, herr, `${typ.name} geht hier nicht: ${grund}.`, 'warn'); return; }
-      bezahlen(z, herr, art, o.x, o.y);
+      bezahlen(z, herr, art, o.x, o.y, 'herr');
       const neu = gebaeudeAnlegen(z, herr, art, o, { auftrag: true, keinWeg: art === 'turm' && !!b.anMauer });
       // In die Mauer eingeklinkter Wachturm: Eingang (Front) auf der Mauer-Innenseite, Soldaten steigen dort auf
       if (art === 'turm' && b.anMauer) neu.anMauer = true;
@@ -282,7 +284,7 @@ export function befehlAnwenden(z, b) {
         if (pruefePlatz(z, herr, o, { mauer: true, keineStrasse: false, steilMax: 150, felsOk: true })) { ausgelassen++; continue; }
         if (mauerKreuztStrasse(z, o, true) >= 0) { ausgelassen++; continue; } // nicht längs auf einem Weg
         if (fehlendeKosten(h, art).length) { geld++; continue; }
-        bezahlen(z, herr, art, o.x, o.y);
+        bezahlen(z, herr, art, o.x, o.y, 'herr');
         const g = gebaeudeAnlegen(z, herr, art, o, { auftrag: true, keinWeg: true });
         // Rasterpunkte: genaue Enden jedes Stücks, damit neue Mauern und Türme exakt ansetzen können
         g.ende = [ax + Math.trunc((bx - ax) * i / n), ay + Math.trunc((by - ay) * i / n), ax + Math.trunc((bx - ax) * (i + 1) / n), ay + Math.trunc((by - ay) * (i + 1) / n)];
@@ -296,7 +298,7 @@ export function befehlAnwenden(z, b) {
     }
     case 'abreissen': {
       const g = z.gebaeude[ganz(b.id, 0, z.gebaeude.length - 1)];
-      if (!g || g.besitzer !== herr || g.zustand === 'weg' || g.art === 'burg' || g.art === 'platz') return;
+      if (!g || g.besitzer !== herr || g.zustand === 'weg' || g.art === 'burg' || g.art === 'platz' || g.art === 'rathaus' || g.art === 'kirche') return;
       const kosten = GEBAEUDE[g.art].kosten || {};
       g.zustand = 'weg';
       for (const w in kosten) if (w !== 'gold') geben(z, herr, null, w, Math.floor(kosten[w] / 2), g.x, g.y);
@@ -409,9 +411,9 @@ export function befehlAnwenden(z, b) {
       // Abgebrannter Hof: Der Herr gibt Holz und Gold, die Bauern bauen sofort wieder auf (halbe Bauzeit).
       const g = z.gebaeude[ganz(b.id, 0, z.gebaeude.length - 1)];
       if (!g || g.besitzer !== herr || g.zustand !== 'ruine') return;
-      const fehlt = Object.keys(HOF_BRAND.hilfe).filter((w) => (h.lager[w] || 0) < HOF_BRAND.hilfe[w]);
+      const fehlt = Object.keys(HOF_BRAND.hilfe).filter((w) => verfuegbar(h, w, 'herr') < HOF_BRAND.hilfe[w]);
       if (fehlt.length) { meldung(z, herr, `Für den Wiederaufbau fehlt ${fehlt.map((w) => WARENNAME[w]).join(', ')}.`, 'warn'); return; }
-      for (const w in HOF_BRAND.hilfe) nehmen(z, herr, w, HOF_BRAND.hilfe[w], g.x, g.y);
+      for (const w in HOF_BRAND.hilfe) nehmen(z, herr, w, HOF_BRAND.hilfe[w], g.x, g.y, 'herr');
       const typ = GEBAEUDE[g.art];
       g.zustand = 'bau'; g.arbeit = Math.floor(typ.arbeit * HOF_BRAND.bauAnteil / 100);
       g.hp = Math.floor(g.hpMax / 4); g.puffer = 0; g.aufgabe = 0; g.aufgabeFeld = -1; g.pflegeFeld = -1;
@@ -420,11 +422,21 @@ export function befehlAnwenden(z, b) {
       meldung(z, herr, `Die Bauern bauen ${typ.name} mit deiner Hilfe wieder auf.`, 'gut');
       break;
     }
+    case 'lagerSperre': {
+      // Runde 13: Die Burg als privates Lager — gesperrt liefert niemand hinein und die Stadt nimmt nichts heraus.
+      const g = z.gebaeude[ganz(b.id, 0, z.gebaeude.length - 1)];
+      if (!g || g.besitzer !== herr || g.art !== 'burg') return;
+      g.gesperrt = !!b.an;
+      summieren(z, herr);
+      meldung(z, herr, g.gesperrt ? 'Burglager gesperrt: Es ist jetzt dein privates Lager — die Stadt nimmt nichts heraus.' : 'Burglager geöffnet: Die Stadt darf liefern und entnehmen.', 'info');
+      break;
+    }
     case 'cheat': {
       // Testhilfe für Spieltests: füllt die Burg auf (im Mehrspieler später abschaltbar).
       const burg = z.gebaeude[h.burg];
-      for (const w of WAREN) geben(z, herr, burg, w, 200);
-      meldung(z, herr, 'Schatzkammer aufgefüllt: +200 von jeder Ware.', 'gut');
+      const mk = z.gebaeude[h.markt] || burg;
+      for (const w of WAREN) { geben(z, herr, burg, w, 200); geben(z, herr, null, w, 200, mk.x, mk.y); }
+      meldung(z, herr, 'Testhilfe: +200 von jeder Ware in die Burg und ins Stadtlager.', 'gut');
       break;
     }
     case 'transfer': {

@@ -21,3 +21,8 @@
 **Beobachtung:** `fehler.log` leer — heißt das „keine Fehler“ oder „Leitung kaputt“?
 **Änderung:** Testzeile per POST an /fehlerlog geschickt, kam an, wieder gelöscht.
 **Lehre:** Ein leeres Log nur dann als „fehlerfrei“ melden, wenn die Leitung geprüft ist.
+
+### 2026-11-13 — Runde 12 (Zwischenstand „Herr & Stadt“)
+**Beobachtung:** Tests grün, aber zwei Lücken per Skript gefunden: `kaufen` mit `ware:'constructor'` macht Burg- und Speichergold zu NaN; Abriss von Rathaus + letztem Speicher schiebt das ganze Stadtlager in die Kammer.
+**Ursache:** Prüfung `HERR.kauf[ware]` trifft auch Object.prototype; die „Fallback auf anderen Topf“-Regel in lager.js hebelt das Umlager-Verbot aus. UI versteckt Rathaus-Abriss, der Befehl erlaubt ihn.
+**Lehre:** Bei jeder Trennregel (Topf, Besitzer) den Fallback-Pfad gezielt angreifen (letztes Lager weg). Befehls-Schlüssel aus Eingaben nur mit `WAREN.includes`/`Object.hasOwn` prüfen; summieren mit `|| 0` versteckt NaN in der Anzeige → im Test `g.inhalt` direkt prüfen.

@@ -30,6 +30,8 @@ powershell -ExecutionPolicy Bypass -File ..\serve.ps1 -Port 5178 -Root Lehnsherr
 - **Wirtschaft:** Bauernhof (+Felder), Viehhof (+Weide), Fischer, Holzfäller (fällt echte Bäume, forstet auf),
   Steinbruch, Erzgrube, Waffenschmiede (Speere oder Bögen). Träger und Erntewagen laufen echte Wege.
 - **Lager:** Waren liegen in Speicher und Burg; verbraucht wird aus dem nächsten Lager; Speicher können brennen.
+  Die **Burg ist dein privates Lager** (gesperrt): Die Stadt nimmt nichts heraus, Betriebe liefern nicht hinein; du
+  lagerst gezielt ein (Umlagern) und zahlst Militär, Sold und Rekruten zuerst von dort. Burg anklicken → öffnen/sperren.
 - **Militär:** Speerträger und Bogenschützen, Burg 5 und Kaserne 10 Plätze; Rekrut = Waffe + 8 Gold + 1 Bewohner;
   Unterhalt 1 Nahrung + ⅓ Gold pro Tag. Wachtürme schießen. Räuberbanden ab Tag 9, werden größer.
 - **Stadtplaner:** gerade Straßen mit Bögen, Wege als ausgetretene Trampelpfade, Gassen als T-Abzweig mit Blocktiefe, dichte Bürgerhäuser am Markt,

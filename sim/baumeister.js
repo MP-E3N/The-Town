@@ -754,9 +754,10 @@ function bezahlbar(h, art) {
   for (const w in kosten) if ((h.lager[w] || 0) < kosten[w]) return false;
   return true;
 }
-export function bezahlen(z, herr, art, x, y) {
+/** Baukosten zahlen: der Baumeister aus den Lagern der Stadt, Aufträge des Herrn (wer 'herr') zuerst aus der Burg. */
+export function bezahlen(z, herr, art, x, y, wer = 'stadt') {
   const kosten = GEBAEUDE[art].kosten || {};
-  for (const w in kosten) nehmen(z, herr, w, kosten[w], x, y);
+  for (const w in kosten) nehmen(z, herr, w, kosten[w], x, y, wer);
 }
 
 function log(z, herr, text) {

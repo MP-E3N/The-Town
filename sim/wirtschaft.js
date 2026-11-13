@@ -13,7 +13,7 @@ import {
   MILITAER, ZIEL, NIEDERLAGE_BEWOHNER, TEMPO, WAGEN, HOF_BRAND,
 } from '../data/werte.js';
 import { GEBAEUDE, SCHMIEDE_PRODUKTE, AUSBILDUNG } from '../data/gebaeude.js';
-import { nehmen, geben, naechstesLager, hatKosten, bezahleKosten } from './lager.js';
+import { nehmen, geben, naechstesLager, hatKosten, bezahleKosten, verfuegbar } from './lager.js';
 import { karteFuer } from './karte.js';
 import { abgeleitet } from './abgeleitet.js';
 import { wegGecached, pfadLaenge } from './pfad.js';
@@ -64,7 +64,7 @@ function hatArbeit(z, g, h) {
   const typ = GEBAEUDE[g.art];
   if (g.art === 'hof') return !!feldAufgabe(z, g) || !!pflegeFeld(z, g);
   if (g.puffer >= TRAGEN * 2) return false;
-  if (g.art === 'schmiede' && !g.material && !hatKosten(h, SCHMIEDE_PRODUKTE[g.produkt || 'speere'].material)) return false;
+  if (g.art === 'schmiede' && !g.material && !hatKosten(h, SCHMIEDE_PRODUKTE[g.produkt || 'speere'].material, 'herr')) return false;
   if (g.blockiert && z.tick % 600 !== 0) return false;
   return !!typ.arbeiter;
 }
@@ -144,7 +144,8 @@ function produktion(z) {
     else if (g.belegt > 0 && g.puffer < TRAGEN * 2) {
       if (g.art === 'schmiede' && !g.material) {
         const mat = SCHMIEDE_PRODUKTE[g.produkt || 'speere'].material;
-        if (hatKosten(h, mat)) { bezahleKosten(z, g.besitzer, mat, g.x, g.y); g.material = 1; g.materialFuer = g.produkt || 'speere'; } else continue;
+        // Die Waffenschmiede ist ein Auftrag des Herrn: Material zuerst aus seiner Burg
+        if (hatKosten(h, mat, 'herr')) { bezahleKosten(z, g.besitzer, mat, g.x, g.y, 'herr'); g.material = 1; g.materialFuer = g.produkt || 'speere'; } else continue;
       }
       g.fortschritt += g.belegt;
       let tpe = g.art === 'viehhof' ? viehTakt(z, g) : typ.ticksProEinheit;
@@ -298,14 +299,15 @@ function anwerben(z) {
       continue;
     }
     const leute = manuell ? h.bewohner > NIEDERLAGE_BEWOHNER + 2 : h.arbeitslos >= 1 && h.bewohner > NIEDERLAGE_BEWOHNER + 2;
-    if (h.lager[aus.waffe] >= 1 && h.lager.gold >= a.gold && leute) {
-      nehmen(z, g.besitzer, aus.waffe, 1, g.x, g.y); nehmen(z, g.besitzer, 'gold', a.gold, g.x, g.y);
+    // Waffe und Handgeld zahlt der Herr — zuerst aus der Burg
+    if (verfuegbar(h, aus.waffe, 'herr') >= 1 && verfuegbar(h, 'gold', 'herr') >= a.gold && leute) {
+      nehmen(z, g.besitzer, aus.waffe, 1, g.x, g.y, 'herr'); nehmen(z, g.besitzer, 'gold', a.gold, g.x, g.y, 'herr');
       h.bewohner--; if (h.arbeitslos > 0) h.arbeitslos--;
       g.anwerbung = 1; g.anwerbungTyp = art;
       if (manuell) schlange.shift();
-    } else if (h.lager[aus.waffe] < 1) {
+    } else if (verfuegbar(h, aus.waffe, 'herr') < 1) {
       meldung(z, g.besitzer, aus.waffe === 'speere' ? 'Rekrutieren stockt: keine Speere (Waffenschmiede braucht Holz + Eisen).' : 'Rekrutieren stockt: keine Bögen (Waffenschmiede auf Bögen stellen).', 'warn', 'waffen' + aus.waffe, 4000);
-    } else if (h.lager.gold < a.gold) {
+    } else if (verfuegbar(h, 'gold', 'herr') < a.gold) {
       meldung(z, g.besitzer, `Rekrutieren stockt: Ein Rekrut kostet ${a.gold} Gold.`, 'warn', 'rekrutGold', 4000);
     } else {
       meldung(z, g.besitzer, 'Rekrutieren stockt: zu wenige Bewohner.', 'warn', 'rekrutLeute', 4000);
@@ -360,7 +362,9 @@ function tagFuerHerr(z, herr, d) {
   // Nahrung: Soldaten zuerst
   const essen = h.bewohner + soldaten;
   const mk = z.gebaeude[h.markt] || z.gebaeude[h.burg];
-  const gegessen = nehmen(z, herr, 'nahrung', essen, mk.x, mk.y);
+  // Runde 13: Die Garnison isst zuerst aus der Burg des Herrn, die Bürger nur aus den Lagern der Stadt
+  const burgE = z.gebaeude[h.burg] || mk;
+  const gegessen = nehmen(z, herr, 'nahrung', soldaten, burgE.x, burgE.y, 'herr') + nehmen(z, herr, 'nahrung', h.bewohner, mk.x, mk.y, 'stadt');
   const nahrung = essen ? Math.floor(gegessen * 100 / essen) : 100;
   const hungernde = Math.max(0, essen - gegessen);
   // Wärme
@@ -393,7 +397,7 @@ function tagFuerHerr(z, herr, d) {
   const sold = Math.ceil(soldaten / MILITAER.soldTeiler);
   const burgG = z.gebaeude[h.burg];
   geben(z, herr, burgG, 'gold', steuer);
-  const bezahlt = nehmen(z, herr, 'gold', sold, burgG.x, burgG.y);
+  const bezahlt = nehmen(z, herr, 'gold', sold, burgG.x, burgG.y, 'herr');
   h.gestern = { ...h.heute, steuer, sold, gegessen, geheizt, holzBedarf, essen };
   h.heute = {};
   if (bezahlt < sold) {

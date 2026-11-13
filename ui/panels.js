@@ -11,6 +11,7 @@ import { JAHRESZEITEN, ZIEL, STEUER, BEDARF, STADTNAME, MILITAER, NIEDERLAGE_BEW
 import { stadtStatus, flurAuswertung, hofAusblick, FLUR_KLASSEN } from '../sim/baumeister.js';
 import { tageBisErnte } from '../sim/wirtschaft.js';
 import { datum, flaecheVon } from '../sim/lib.js';
+import { verfuegbar } from '../sim/lager.js';
 
 const $ = (id) => document.getElementById(id);
 const SYMBOL = { nahrung: '🌾', holz: '🪵', stein: '🪨', eisen: '⛓️', speere: '🔱', boegen: '🏹', gold: '🪙' };
@@ -48,7 +49,7 @@ const STRASSEN_TEXT = {
 /** Knopf „beim Wiederaufbau helfen“ (Kosten aus HOF_BRAND), ausgegraut, wenn das Lager nicht reicht. */
 function hilfeKnopf(zz, g) {
   const h = zz.herren[g.besitzer], k = HOF_BRAND.hilfe;
-  const fehlt = Object.keys(k).filter((w) => (h.lager[w] || 0) < k[w]);
+  const fehlt = Object.keys(k).filter((w) => verfuegbar(h, w, 'herr') < k[w]);
   const preis = Object.entries(k).map(([w, n]) => `${n} ${SYMBOL[w]}`).join(' + ');
   return `<div class="knoepfe"><button data-wiederaufbau="${g.id}" ${fehlt.length ? 'disabled' : ''} title="Die Bauern bauen sofort wieder auf, die Hälfte der Arbeit ist mit deiner Hilfe schon getan">⚒ Beim Wiederaufbau helfen (${preis})</button></div>` + (fehlt.length ? `<div class="klein" style="color:var(--schlecht)">Es fehlt: ${fehlt.map((w) => WARENNAME[w]).join(', ')}</div>` : '');
 }
@@ -146,6 +147,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
   $('info').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.wiederaufbau) verbindung().senden({ typ: 'wiederaufbau', id: Number(b.dataset.wiederaufbau) });
+    if (b.dataset.sperre) verbindung().senden({ typ: 'lagerSperre', id: Number(b.dataset.sperre), an: b.dataset.an === '1' });
     if (b.dataset.abriss) { verbindung().senden({ typ: 'abreissen', id: Number(b.dataset.abriss) }); ui.auswahl = -1; }
     if (b.dataset.zu) { ui.auswahl = -1; ui.einheiten.clear(); }
     if (b.dataset.frei) verbindung().senden({ typ: 'einheiten', ids: [...ui.einheiten], aktion: 'frei' });
@@ -235,7 +237,7 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     }
     const arbeitend = Object.values(arbeit).reduce((a, b) => a + b, 0);
     const leute = Math.max(0, h.bewohner - NIEDERLAGE_BEWOHNER - 2);
-    const waffen = h.lager.speere + h.lager.boegen, goldFuer = Math.floor(h.lager.gold / MILITAER.anwerben.gold);
+    const waffen = verfuegbar(h, 'speere', 'herr') + verfuegbar(h, 'boegen', 'herr'), goldFuer = Math.floor(verfuegbar(h, 'gold', 'herr') / MILITAER.anwerben.gold);
     const platz = Math.max(0, st.plaetze - st.soldaten - ausbildung);
     const jetzt = Math.min(leute, waffen, goldFuer, platz);
     const grenze = jetzt === leute ? 'Bewohner' : jetzt === waffen ? 'Waffen' : jetzt === goldFuer ? 'Gold' : 'Plätze in Burg/Kaserne';
@@ -253,7 +255,9 @@ export function erzeugePanels(verbindung, ui, aktionen) {
     const bv = bevoelkerung(zz, herr, h, st);
     const waren = Object.keys(SYMBOL).map((w) => {
       const knapp = (w === 'nahrung' && h.lager.nahrung < verbrauch * 4) || (w === 'holz' && h.lager.holz < 10);
-      return `<span class="${knapp ? 'knapp' : ''}" data-tipp="${WARENNAME[w]} – ${WAREN_TEXT[w]}">${SYMBOL[w]} ${h.lager[w]}</span>`;
+      // Runde 13: Gesamt (Stadt + private Burg); was privat in der gesperrten Burg liegt, steht klein mit 🔒 dahinter
+      const p = h.privat ? h.privat[w] || 0 : 0;
+      return `<span class="${knapp ? 'knapp' : ''}" data-tipp="${WARENNAME[w]} – ${WAREN_TEXT[w]}. Stadt: ${h.lager[w]}${p ? ` · privat in deiner Burg (gesperrt): ${p}` : ''}">${SYMBOL[w]} ${h.lager[w] + p}${p ? `<small class="klein"> 🔒${p}</small>` : ''}</span>`;
     }).join('') + `<span data-tipp="Bewohner ${h.bewohner}: ${bv.arbeitend} arbeiten, ${bv.frei} ohne Arbeit · rekrutierbar jetzt ${bv.jetzt} (Details rechts unter Bevölkerung)">👥 ${h.bewohner} <small class="klein">(⚒${bv.arbeitend} · ${bv.frei} frei · 🛡${bv.jetzt})</small></span>`
       + `<span data-tipp="Garnison – Ziel: ${ZIEL.garnison} Mann. Sold: ${Math.ceil(st.soldaten / MILITAER.soldTeiler)} Gold/Tag">🛡️ ${st.soldaten}/${ZIEL.garnison}</span><span data-tipp="Zufriedenheit – ab 50 ziehen Leute zu, unter 35 ziehen sie weg">${h.laune >= 60 ? '🙂' : h.laune >= 35 ? '😐' : '☹️'} ${h.laune}</span>`;
     $('waren').innerHTML = waren;
@@ -413,6 +417,13 @@ export function erzeugePanels(verbindung, ui, aktionen) {
             zeilen.push('Felder: ' + g.felder.map((id) => { const f = zz.felder[id]; return f.weg ? '—' : ph[f.phase] + (f.phase === 'wachsend' ? ` ${Math.floor(f.stand / 50)}% · gepflegt ${f.pflege || 0}%` : ''); }).join(', '));
             const tun = g.aufgabeFeld >= 0 ? (zz.felder[g.aufgabeFeld].phase === 'reif' ? 'ernten' : 'säen') : g.pflegeFeld >= 0 && g.belegt ? 'hacken und jäten (Feldpflege, bis +' + FELD.pflegeBonus + ' % Ertrag)' : 'nichts zu tun – helfen anderswo';
             zeilen.push('Bauern: ' + tun);
+          }
+          if (g.art === 'burg') {
+            // Runde 13: Burg = privates Lager des Herrn (gesperrt) oder offen für die Stadt
+            zeilen.push(g.gesperrt
+              ? '🔒 Privates Lager: Die Stadt nimmt nichts heraus, Betriebe liefern nicht hinein. Einlagern: einen Speicher anklicken → „Umlagern nach Burg“. Militär, Sold und Rekruten zahlst du zuerst von hier.'
+              : '🔓 Offen: Die Burg ist ein Lager wie jeder Speicher — die Stadt liefert hinein und nimmt heraus.');
+            extra += `<div class="wahl"><button data-sperre="${g.id}" data-an="${g.gesperrt ? '0' : '1'}" data-tipp="${g.gesperrt ? 'Die Stadt darf wieder liefern und entnehmen' : 'Nur du entscheidest, was hinein- und herauskommt'}">${g.gesperrt ? '🔓 Für die Stadt öffnen' : '🔒 Als privates Lager sperren'}</button></div>`;
           }
           if (typ.lager) {
             extra += inhaltTabelle(g);
